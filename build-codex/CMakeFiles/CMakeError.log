@@ -1,0 +1,74 @@
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+Compiler:  
+Build flags: 
+Id flags:  
+
+The output was:
+1
+鐢ㄤ簬 .NET Framework 鐨?Microsoft (R) 鐢熸垚寮曟搸鐗堟湰 16.11.1+3e40a09f8
+鐗堟潈鎵€鏈?C) Microsoft Corporation銆備繚鐣欐墍鏈夋潈鍒┿€?
+
+鐢熸垚鍚姩鏃堕棿涓?2026/7/16 23:12:48銆?
+鑺傜偣 1 涓婄殑椤圭洰鈥淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)銆?
+PrepareForBuild:
+  姝ｅ湪鍒涘缓鐩綍鈥淒ebug\鈥濄€?
+  姝ｅ湪鍒涘缓鐩綍鈥淒ebug\CompilerIdCXX.tlog\鈥濄€?
+InitializeBuildStatus:
+  姝ｅ湪鍒涘缓鈥淒ebug\CompilerIdCXX.tlog\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+ClCompile:
+  D:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\" /Fd"Debug\vc142.pdb" /external:W0 /Gd /TP /FC /errorReport:queue CMakeCXXCompilerId.cpp
+  CMakeCXXCompilerId.cpp
+Link:
+  D:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:".\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\CompilerIdCXX.lib" /MACHINE:X64 Debug\CMakeCXXCompilerId.obj
+LINK : fatal error LNK1181: 鏃犳硶鎵撳紑杈撳叆鏂囦欢鈥渒ernel32.lib鈥?[D:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj]
+宸插畬鎴愮敓鎴愰」鐩€淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)鐨勬搷浣?- 澶辫触銆?
+
+鐢熸垚澶辫触銆?
+
+鈥淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣) (1) ->
+(Link 鐩爣) -> 
+  LINK : fatal error LNK1181: 鏃犳硶鎵撳紑杈撳叆鏂囦欢鈥渒ernel32.lib鈥?[D:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj]
+
+    0 涓鍛?
+    1 涓敊璇?
+
+宸茬敤鏃堕棿 00:00:02.80
+
+
+Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" failed.
+Compiler:  
+Build flags: 
+Id flags:  
+
+The output was:
+1
+鐢ㄤ簬 .NET Framework 鐨?Microsoft (R) 鐢熸垚寮曟搸鐗堟湰 16.11.1+3e40a09f8
+鐗堟潈鎵€鏈?C) Microsoft Corporation銆備繚鐣欐墍鏈夋潈鍒┿€?
+
+鐢熸垚鍚姩鏃堕棿涓?2026/7/16 23:12:51銆?
+鑺傜偣 1 涓婄殑椤圭洰鈥淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)銆?
+PrepareForBuild:
+  姝ｅ湪鍒涘缓鐩綍鈥淒ebug\鈥濄€?
+  姝ｅ湪鍒涘缓鐩綍鈥淒ebug\CompilerIdCXX.tlog\鈥濄€?
+InitializeBuildStatus:
+  姝ｅ湪鍒涘缓鈥淒ebug\CompilerIdCXX.tlog\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+ClCompile:
+  D:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\" /Fd"Debug\vc142.pdb" /external:W0 /Gd /TP /FC /errorReport:queue CMakeCXXCompilerId.cpp
+  CMakeCXXCompilerId.cpp
+Link:
+  D:\Program Files (x86)\Microsoft Visual Studio\2019\Professional\VC\Tools\MSVC\14.29.30133\bin\HostX64\x64\link.exe /ERRORREPORT:QUEUE /OUT:".\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\CompilerIdCXX.lib" /MACHINE:X64 Debug\CMakeCXXCompilerId.obj
+LINK : fatal error LNK1181: 鏃犳硶鎵撳紑杈撳叆鏂囦欢鈥渒ernel32.lib鈥?[D:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj]
+宸插畬鎴愮敓鎴愰」鐩€淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)鐨勬搷浣?- 澶辫触銆?
+
+鐢熸垚澶辫触銆?
+
+鈥淒:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj鈥?榛樿鐩爣) (1) ->
+(Link 鐩爣) -> 
+  LINK : fatal error LNK1181: 鏃犳硶鎵撳紑杈撳叆鏂囦欢鈥渒ernel32.lib鈥?[D:\AI WORKER\cppinsight\build-codex\CMakeFiles\3.16.0\CompilerIdCXX\CompilerIdCXX.vcxproj]
+
+    0 涓鍛?
+    1 涓敊璇?
+
+宸茬敤鏃堕棿 00:00:00.80
+
+
