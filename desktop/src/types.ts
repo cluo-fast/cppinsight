@@ -18,6 +18,8 @@ export interface IncludeInfo {
   line: number;
   target: string;
   kind: string;
+  resolved?: boolean;
+  resolved_path?: string;
 }
 
 export interface SymbolInfo {
@@ -28,12 +30,14 @@ export interface SymbolInfo {
   signature: string;
   scope: string;
   is_definition: boolean;
+  confidence?: string;
 }
 
 export interface CallInfo {
   file: string;
   line: number;
   name: string;
+  confidence?: string;
 }
 
 export interface FileInfo {
@@ -41,6 +45,9 @@ export interface FileInfo {
   extension: string;
   category: string;
   size_bytes: number;
+  mtime_unix?: number;
+  from_compile_commands?: boolean;
+  reused_from_cache?: boolean;
   lines: LineStats;
   includes: IncludeInfo[];
   symbols: SymbolInfo[];
@@ -50,11 +57,15 @@ export interface FileInfo {
 export interface ScanResult {
   schema_version: number;
   root: string;
+  mode?: string;
+  confidence?: string;
+  scan_duration_ms?: number;
   file_count: number;
   skipped_entries: number;
   stats: ScanStats;
   extensions: Record<string, number>;
   top_level_layout: Record<string, number>;
+  second_level_layout?: Record<string, number>;
   diagnostics: string[];
   includes: IncludeInfo[];
   symbols: SymbolInfo[];
@@ -76,9 +87,12 @@ export interface ProjectOverview {
   file_count: number;
   symbol_count: number;
   include_count: number;
+  mode?: string;
+  confidence?: string;
   stats: ScanStats;
   extensions: Record<string, number>;
   top_level_layout: Record<string, number>;
+  second_level_layout?: Record<string, number>;
   hotspots: HotFile[];
   symbols: SymbolInfo[];
   diagnostics: string[];
@@ -100,4 +114,13 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   citations?: Citation[];
+}
+
+export interface IndexProgressEvent {
+  stage: "scanning" | "indexing" | "done" | string;
+  files_discovered?: number;
+  files_analyzed?: number;
+  files_reused?: number;
+  current_file?: string;
+  message?: string;
 }
