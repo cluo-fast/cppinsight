@@ -9,7 +9,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct LineStats {
@@ -302,7 +302,33 @@ pub fn parse_scan_progress_line(line: &str) -> Option<ParsedScanProgress> {
     })
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IndexProgressEvent {
+    pub stage: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_discovered: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_analyzed: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub files_reused: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_file: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+pub(crate) fn emit_index_progress(app: &tauri::AppHandle, event: &IndexProgressEvent) {
+    let _ = app.emit("index-progress", event);
+}
+
 pub fn run_scan(path: &str) -> Result<ScanResult, String> {
+    run_scan_with_progress(path, |_| {})
+}
+
+pub fn run_scan_with_progress(
+    path: &str,
+    mut on_progress: impl FnMut(IndexProgressEvent),
+) -> Result<ScanResult, String> {
     let cli = find_cppinsight_binary()?;
     let json_path = std::env::temp_dir().join(format!(
         "cppinsight-scan-{}-{}.json",
@@ -310,22 +336,42 @@ pub fn run_scan(path: &str) -> Result<ScanResult, String> {
         Utc::now().timestamp_millis()
     ));
 
-    let output = Command::new(&cli)
+    let mut child = Command::new(&cli)
         .arg("scan")
         .arg(path)
         .arg("--json")
         .arg(&json_path)
-        .arg("--quiet")
-        .output()
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .map_err(|error| format!("failed to run cppinsight CLI: {error}"))?;
 
-    if !output.status.success() {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "cppinsight scan failed with status {}.\n{}\n{}",
-            output.status, stdout, stderr
-        ));
+    if let Some(stderr) = child.stderr.take() {
+        let reader = BufReader::new(stderr);
+        for line in reader.lines() {
+            let Ok(line) = line else {
+                continue;
+            };
+            if let Some(parsed) = parse_scan_progress_line(&line) {
+                on_progress(IndexProgressEvent {
+                    stage: "scanning".to_string(),
+                    files_discovered: Some(parsed.files_discovered),
+                    files_analyzed: Some(parsed.files_analyzed),
+                    files_reused: Some(parsed.files_reused),
+                    current_file: Some(parsed.current_file),
+                    message: None,
+                });
+            }
+        }
+    }
+
+    let status = child
+        .wait()
+        .map_err(|error| format!("failed to wait for cppinsight CLI: {error}"))?;
+
+    if !status.success() {
+        let _ = fs::remove_file(&json_path);
+        return Err(format!("cppinsight scan failed with status {status}."));
     }
 
     let json_text = fs::read_to_string(&json_path)
