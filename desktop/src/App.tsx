@@ -128,7 +128,11 @@ export default function App() {
         text: text.trim()
       };
       setMessages((current) => [...current, userMessage]);
-      const response: AskResponse = await askProject(overview.project_id, text.trim());
+      const response: AskResponse = await askProject(
+        overview.root,
+        overview.project_id,
+        text.trim()
+      );
       setMessages((current) => [
         ...current,
         {
@@ -292,7 +296,7 @@ export default function App() {
                 disabled={busy}
                 onClick={() =>
                   void withBusy("正在生成客户摘要…", async () => {
-                    const text = await exportClientSummary(overview.project_id);
+                    const text = await exportClientSummary(overview.root, overview.project_id);
                     setSummary(text);
                   })
                 }

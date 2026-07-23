@@ -1,7 +1,7 @@
 mod commands;
 
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{BTreeMap, HashSet};
@@ -189,10 +189,24 @@ pub async fn ask_project_at(
     question: &str,
     db_path: &Path,
 ) -> Result<AskResponse, String> {
+    ask_project_at_with_settings(project_id, question, db_path, None).await
+}
+
+pub async fn ask_project_at_with_settings(
+    project_id: i64,
+    question: &str,
+    db_path: &Path,
+    settings_db_path: Option<&Path>,
+) -> Result<AskResponse, String> {
     let (contexts, api_key) = {
         let connection = open_database_at(db_path)?;
         let contexts = search_contexts(&connection, project_id, question, 8)?;
-        let api_key = read_openai_api_key(&connection)?;
+        let api_key = if let Some(settings_path) = settings_db_path {
+            let settings = open_database_at(settings_path)?;
+            read_openai_api_key(&settings)?
+        } else {
+            read_openai_api_key(&connection)?
+        };
         (contexts, api_key)
     };
 
@@ -229,27 +243,420 @@ pub fn default_db_path() -> PathBuf {
     PathBuf::from("projects.sqlite")
 }
 
+pub fn project_index_db_path(root: &Path) -> PathBuf {
+    root.join(".cppinsight").join("index.sqlite")
+}
+
 fn dirs_next_home() -> Option<PathBuf> {
     std::env::var_os("USERPROFILE")
         .or_else(|| std::env::var_os("HOME"))
         .map(PathBuf::from)
 }
 
-pub(crate) fn default_db_path_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn app_data_dir_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|error| format!("failed to resolve app data dir: {error}"))
+}
+
+/// Legacy global projects DB (pre project-local index).
+pub(crate) fn legacy_projects_db_path_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir_from_app(app)?.join("projects.sqlite"))
+}
+
+pub(crate) fn settings_db_path_from_app(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    Ok(app_data_dir_from_app(app)?.join("settings.sqlite"))
+}
+
+/// Index DB for a project root. `CPPINSIGHT_DB` overrides (migration skipped by callers).
+pub(crate) fn index_db_path_for_root(
+    app: &tauri::AppHandle,
+    root: &Path,
+) -> Result<PathBuf, String> {
     if let Ok(path) = std::env::var("CPPINSIGHT_DB") {
         return Ok(PathBuf::from(path));
     }
-
-    let data_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|error| format!("failed to resolve app data dir: {error}"))?;
-    Ok(data_dir.join("projects.sqlite"))
+    let _ = app;
+    Ok(project_index_db_path(root))
 }
 
-pub(crate) fn open_database_from_app(app: &tauri::AppHandle) -> Result<Connection, String> {
-    let db_path = default_db_path_from_app(app)?;
-    open_database_at(&db_path)
+#[cfg(windows)]
+pub fn normalize_root_key(root: &str) -> String {
+    let path = PathBuf::from(root);
+    let canonical = fs::canonicalize(&path).unwrap_or(path);
+    let mut value = canonical.to_string_lossy().to_string();
+    if let Some(stripped) = value.strip_prefix(r"\\?\") {
+        value = stripped.to_string();
+    }
+    value.replace('/', "\\").to_lowercase()
+}
+
+#[cfg(not(windows))]
+pub fn normalize_root_key(root: &str) -> String {
+    let path = PathBuf::from(root);
+    let canonical = fs::canonicalize(&path).unwrap_or(path);
+    canonical.to_string_lossy().replace('\\', "/")
+}
+
+fn legacy_db_candidates(app: &tauri::AppHandle) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(path) = legacy_projects_db_path_from_app(app) {
+        candidates.push(path);
+    }
+    if let Some(home) = dirs_next_home() {
+        candidates.push(home.join(".cppinsight").join("projects.sqlite"));
+    }
+    candidates
+}
+
+fn project_exists_for_root(connection: &Connection, root: &str) -> Result<bool, String> {
+    let target = normalize_root_key(root);
+    let mut statement = connection
+        .prepare("SELECT root FROM projects")
+        .map_err(sql_error)?;
+    let roots = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(sql_error)?;
+    for item in roots {
+        let value = item.map_err(sql_error)?;
+        if normalize_root_key(&value) == target {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn find_legacy_project_id(connection: &Connection, root: &str) -> Result<Option<i64>, String> {
+    let target = normalize_root_key(root);
+    let mut statement = connection
+        .prepare("SELECT id, root FROM projects")
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .map_err(sql_error)?;
+    for row in rows {
+        let (id, stored_root) = row.map_err(sql_error)?;
+        if normalize_root_key(&stored_root) == target {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
+
+fn copy_project_between_dbs(
+    source: &Connection,
+    destination: &Connection,
+    source_project_id: i64,
+) -> Result<i64, String> {
+    let (root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence): (
+        String,
+        String,
+        i64,
+        i64,
+        i64,
+        String,
+        String,
+        String,
+    ) = source
+        .query_row(
+            "SELECT root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence
+             FROM projects WHERE id = ?1",
+            params![source_project_id],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                ))
+            },
+        )
+        .map_err(sql_error)?;
+
+    destination
+        .execute(
+            "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+             ON CONFLICT(root) DO UPDATE SET
+                indexed_at = excluded.indexed_at,
+                file_count = excluded.file_count,
+                symbol_count = excluded.symbol_count,
+                include_count = excluded.include_count,
+                diagnostics_json = excluded.diagnostics_json,
+                mode = excluded.mode,
+                confidence = excluded.confidence",
+            params![
+                root,
+                indexed_at,
+                file_count,
+                symbol_count,
+                include_count,
+                diagnostics_json,
+                mode,
+                confidence
+            ],
+        )
+        .map_err(sql_error)?;
+
+    let dest_project_id: i64 = destination
+        .query_row(
+            "SELECT id FROM projects WHERE root = ?1",
+            params![root],
+            |row| row.get(0),
+        )
+        .map_err(sql_error)?;
+
+    destination
+        .execute("DELETE FROM files WHERE project_id = ?1", params![dest_project_id])
+        .map_err(sql_error)?;
+    destination
+        .execute("DELETE FROM symbols WHERE project_id = ?1", params![dest_project_id])
+        .map_err(sql_error)?;
+    destination
+        .execute("DELETE FROM includes WHERE project_id = ?1", params![dest_project_id])
+        .map_err(sql_error)?;
+    destination
+        .execute("DELETE FROM chunks WHERE project_id = ?1", params![dest_project_id])
+        .map_err(sql_error)?;
+
+    {
+        let mut statement = source
+            .prepare(
+                "SELECT path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix
+                 FROM files WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix) =
+                row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO files(project_id, path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        dest_project_id,
+                        path,
+                        extension,
+                        category,
+                        size_bytes,
+                        total_lines,
+                        code_lines,
+                        comment_lines,
+                        blank_lines,
+                        mtime_unix
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    {
+        let mut statement = source
+            .prepare(
+                "SELECT file, line, kind, name, signature, scope, is_definition, confidence
+                 FROM symbols WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (file, line, kind, name, signature, scope, is_definition, confidence) =
+                row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        dest_project_id,
+                        file,
+                        line,
+                        kind,
+                        name,
+                        signature,
+                        scope,
+                        is_definition,
+                        confidence
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    {
+        let mut statement = source
+            .prepare(
+                "SELECT file, line, target, kind, resolved, resolved_path
+                 FROM includes WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (file, line, target, kind, resolved, resolved_path) = row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO includes(project_id, file, line, target, kind, resolved, resolved_path)
+                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![dest_project_id, file, line, target, kind, resolved, resolved_path],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    {
+        let mut statement = source
+            .prepare(
+                "SELECT file, start_line, end_line, text FROM chunks WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (file, start_line, end_line, text) = row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO chunks(project_id, file, start_line, end_line, text)
+                     VALUES(?1, ?2, ?3, ?4, ?5)",
+                    params![dest_project_id, file, start_line, end_line, text],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    Ok(dest_project_id)
+}
+
+fn settings_table_api_key(connection: &Connection) -> Result<Option<String>, String> {
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT value FROM settings WHERE key = 'openai_api_key'",
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sql_error)?;
+    Ok(value.and_then(|item| {
+        let trimmed = item.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }))
+}
+
+fn migrate_api_key_once(legacy: &Connection, settings_db: &Path) -> Result<(), String> {
+    let settings = open_database_at(settings_db)?;
+    if settings_table_api_key(&settings)?.is_some() {
+        return Ok(());
+    }
+    let Some(trimmed) = settings_table_api_key(legacy)? else {
+        return Ok(());
+    };
+    settings
+        .execute(
+            "INSERT INTO settings(key, value) VALUES('openai_api_key', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![trimmed],
+        )
+        .map_err(sql_error)?;
+    Ok(())
+}
+
+/// Migrate one project from legacy global DB into project-local DB. Best-effort.
+pub(crate) fn migrate_legacy_project_if_needed(
+    app: &tauri::AppHandle,
+    root: &Path,
+    local_db_path: &Path,
+) -> Result<(), String> {
+    if std::env::var("CPPINSIGHT_DB").is_ok() {
+        return Ok(());
+    }
+
+    let root_str = root.to_string_lossy().to_string();
+    let local = open_database_at(local_db_path)?;
+    let already_local = project_exists_for_root(&local, &root_str)?;
+    let settings_path = settings_db_path_from_app(app)?;
+
+    for legacy_path in legacy_db_candidates(app) {
+        if !legacy_path.exists() {
+            continue;
+        }
+        let legacy = match Connection::open(&legacy_path) {
+            Ok(connection) => connection,
+            Err(_) => continue,
+        };
+        let _ = legacy.execute_batch("PRAGMA foreign_keys = ON;");
+        if migrate_database(&legacy).is_err() {
+            continue;
+        }
+
+        let _ = migrate_api_key_once(&legacy, &settings_path);
+
+        let Some(source_id) = find_legacy_project_id(&legacy, &root_str)? else {
+            continue;
+        };
+
+        if !already_local {
+            copy_project_between_dbs(&legacy, &local, source_id)?;
+        }
+
+        legacy
+            .execute("DELETE FROM projects WHERE id = ?1", params![source_id])
+            .map_err(sql_error)?;
+        return Ok(());
+    }
+
+    Ok(())
 }
 
 pub fn open_database_at(db_path: &Path) -> Result<Connection, String> {
@@ -1305,5 +1712,12 @@ mod tests {
     fn ignores_invalid_scan_progress_line() {
         assert!(parse_scan_progress_line("not a progress line").is_none());
         assert!(parse_scan_progress_line("[scan] files=abc analyzed=1 reused=0 current=x").is_none());
+    }
+
+    #[test]
+    fn project_index_db_path_is_under_cppinsight_dir() {
+        let path = super::project_index_db_path(std::path::Path::new("D:/repos/demo"));
+        assert!(path.ends_with(std::path::Path::new(".cppinsight/index.sqlite"))
+            || path.ends_with(std::path::Path::new(".cppinsight\\index.sqlite")));
     }
 }

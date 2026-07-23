@@ -1,10 +1,10 @@
 use crate::{
-    ask_project_at, build_client_summary, default_db_path_from_app, emit_index_progress,
-    index_scan_json_at, load_project_overview, open_database_at, open_database_from_app,
-    overview_from_scan, run_scan, run_scan_with_progress, sql_error, write_index, AskResponse,
-    IndexProgressEvent, ProjectOverview, ScanResult,
+    ask_project_at_with_settings, build_client_summary, emit_index_progress, index_db_path_for_root,
+    index_scan_json_at, load_project_overview, migrate_legacy_project_if_needed, open_database_at,
+    overview_from_scan, run_scan, run_scan_with_progress, set_api_key_at, settings_db_path_from_app,
+    write_index, AskResponse, IndexProgressEvent, ProjectOverview, ScanResult,
 };
-use rusqlite::params;
+use std::path::PathBuf;
 use tauri::AppHandle;
 
 #[tauri::command]
@@ -34,7 +34,13 @@ pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOvervi
             },
         );
 
-        let db_path = default_db_path_from_app(&app_for_task)?;
+        let root = PathBuf::from(&scan.root);
+        let db_path = index_db_path_for_root(&app_for_task, &root)?;
+        // Best-effort migration; ignore soft failures and continue with fresh write.
+        if let Err(error) = migrate_legacy_project_if_needed(&app_for_task, &root, &db_path) {
+            eprintln!("warning: legacy index migration skipped: {error}");
+        }
+
         let mut connection = open_database_at(&db_path)?;
         let project_id = write_index(&mut connection, &scan)?;
         let overview = overview_from_scan(project_id, &scan)?;
@@ -59,41 +65,54 @@ pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOvervi
 
 #[tauri::command]
 pub fn index_scan_json(app: tauri::AppHandle, scan_json: String) -> Result<ProjectOverview, String> {
-    let db_path = default_db_path_from_app(&app)?;
+    let json_text = std::fs::read_to_string(&scan_json)
+        .map_err(|error| format!("failed to read scan JSON {scan_json}: {error}"))?;
+    let scan: ScanResult = serde_json::from_str(&json_text)
+        .map_err(|error| format!("failed to parse scan JSON: {error}"))?;
+    let root = PathBuf::from(&scan.root);
+    let db_path = index_db_path_for_root(&app, &root)?;
+    if let Err(error) = migrate_legacy_project_if_needed(&app, &root, &db_path) {
+        eprintln!("warning: legacy index migration skipped: {error}");
+    }
     index_scan_json_at(&scan_json, &db_path)
 }
 
 #[tauri::command]
-pub fn get_project_overview(app: tauri::AppHandle, project_id: i64) -> Result<ProjectOverview, String> {
-    let connection = open_database_from_app(&app)?;
+pub fn get_project_overview(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+) -> Result<ProjectOverview, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let connection = open_database_at(&db_path)?;
     load_project_overview(&connection, project_id)
 }
 
 #[tauri::command]
 pub fn set_openai_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), String> {
-    let connection = open_database_from_app(&app)?;
-    connection
-        .execute(
-            "INSERT INTO settings(key, value) VALUES('openai_api_key', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![api_key.trim()],
-        )
-        .map_err(sql_error)?;
-    Ok(())
+    let settings_path = settings_db_path_from_app(&app)?;
+    set_api_key_at(&settings_path, &api_key)
 }
 
 #[tauri::command]
 pub async fn ask_project(
     app: tauri::AppHandle,
+    root: String,
     project_id: i64,
     question: String,
 ) -> Result<AskResponse, String> {
-    let db_path = default_db_path_from_app(&app)?;
-    ask_project_at(project_id, &question, &db_path).await
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let settings_path = settings_db_path_from_app(&app)?;
+    ask_project_at_with_settings(project_id, &question, &db_path, Some(&settings_path)).await
 }
 
 #[tauri::command]
-pub fn export_client_summary(app: tauri::AppHandle, project_id: i64) -> Result<String, String> {
-    let connection = open_database_from_app(&app)?;
+pub fn export_client_summary(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+) -> Result<String, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let connection = open_database_at(&db_path)?;
     build_client_summary(&connection, project_id)
 }

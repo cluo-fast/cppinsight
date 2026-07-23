@@ -39,18 +39,22 @@ export function indexScanJson(scanJson: string): Promise<ProjectOverview> {
   return invoke<ProjectOverview>("index_scan_json", { scanJson });
 }
 
-export function getProjectOverview(projectId: number): Promise<ProjectOverview> {
-  return invoke<ProjectOverview>("get_project_overview", { projectId });
+export function getProjectOverview(root: string, projectId: number): Promise<ProjectOverview> {
+  return invoke<ProjectOverview>("get_project_overview", { root, projectId });
 }
 
 export function setOpenAiApiKey(apiKey: string): Promise<void> {
   return invoke<void>("set_openai_api_key", { apiKey });
 }
 
-export function askProject(projectId: number, question: string): Promise<AskResponse> {
-  return invoke<AskResponse>("ask_project", { projectId, question });
+export function askProject(
+  root: string,
+  projectId: number,
+  question: string
+): Promise<AskResponse> {
+  return invoke<AskResponse>("ask_project", { root, projectId, question });
 }
 
-export function exportClientSummary(projectId: number): Promise<string> {
-  return invoke<string>("export_client_summary", { projectId });
+export function exportClientSummary(root: string, projectId: number): Promise<string> {
+  return invoke<string>("export_client_summary", { root, projectId });
 }
