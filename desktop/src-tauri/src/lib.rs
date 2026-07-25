@@ -420,6 +420,9 @@ fn copy_project_between_dbs(
         .execute("DELETE FROM includes WHERE project_id = ?1", params![dest_project_id])
         .map_err(sql_error)?;
     destination
+        .execute("DELETE FROM calls WHERE project_id = ?1", params![dest_project_id])
+        .map_err(sql_error)?;
+    destination
         .execute("DELETE FROM chunks WHERE project_id = ?1", params![dest_project_id])
         .map_err(sql_error)?;
 
@@ -539,6 +542,34 @@ fn copy_project_between_dbs(
                     "INSERT INTO includes(project_id, file, line, target, kind, resolved, resolved_path)
                      VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
                     params![dest_project_id, file, line, target, kind, resolved, resolved_path],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    if table_exists(source, "calls")? {
+        let mut statement = source
+            .prepare(
+                "SELECT file, line, name, confidence FROM calls WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (file, line, name, confidence) = row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO calls(project_id, file, line, name, confidence)
+                     VALUES(?1, ?2, ?3, ?4, ?5)",
+                    params![dest_project_id, file, line, name, confidence],
                 )
                 .map_err(sql_error)?;
         }
@@ -894,6 +925,16 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
                 FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
             );
 
+            CREATE TABLE IF NOT EXISTS calls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                project_id INTEGER NOT NULL,
+                file TEXT NOT NULL,
+                line INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                confidence TEXT NOT NULL DEFAULT 'heuristic',
+                FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+            );
+
             CREATE TABLE IF NOT EXISTS chunks (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 project_id INTEGER NOT NULL,
@@ -908,6 +949,9 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
                 key TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE INDEX IF NOT EXISTS idx_symbols_project_name ON symbols(project_id, name);
+            CREATE INDEX IF NOT EXISTS idx_calls_project_name ON calls(project_id, name);
             ",
         )
         .map_err(sql_error)?;
@@ -920,6 +964,17 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
         ALTER TABLE symbols ADD COLUMN confidence TEXT NOT NULL DEFAULT 'heuristic';
         ALTER TABLE includes ADD COLUMN resolved INTEGER NOT NULL DEFAULT 0;
         ALTER TABLE includes ADD COLUMN resolved_path TEXT NOT NULL DEFAULT '';
+        CREATE TABLE IF NOT EXISTS calls (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            project_id INTEGER NOT NULL,
+            file TEXT NOT NULL,
+            line INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            confidence TEXT NOT NULL DEFAULT 'heuristic',
+            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_symbols_project_name ON symbols(project_id, name);
+        CREATE INDEX IF NOT EXISTS idx_calls_project_name ON calls(project_id, name);
         ",
     );
 
@@ -981,6 +1036,9 @@ pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64
         .execute("DELETE FROM includes WHERE project_id = ?1", params![project_id])
         .map_err(sql_error)?;
     transaction
+        .execute("DELETE FROM calls WHERE project_id = ?1", params![project_id])
+        .map_err(sql_error)?;
+    transaction
         .execute("DELETE FROM chunks WHERE project_id = ?1", params![project_id])
         .map_err(sql_error)?;
 
@@ -1038,6 +1096,22 @@ pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64
                     include.kind,
                     if include.resolved { 1 } else { 0 },
                     include.resolved_path
+                ],
+            )
+            .map_err(sql_error)?;
+    }
+
+    for call in &scan.calls {
+        transaction
+            .execute(
+                "INSERT INTO calls(project_id, file, line, name, confidence)
+                 VALUES(?1, ?2, ?3, ?4, ?5)",
+                params![
+                    project_id,
+                    call.file,
+                    call.line as i64,
+                    call.name,
+                    call.confidence,
                 ],
             )
             .map_err(sql_error)?;
@@ -1513,6 +1587,9 @@ pub fn search_contexts(
     let tokens = tokenize(question);
     let symbol_names = load_symbol_names(connection, project_id)?;
     let overview_question = is_overview_question(question);
+    let seed_names = match_graph_seed_names(connection, project_id, &tokens)?;
+    let graph_locations = expand_graph_locations(connection, project_id, &seed_names)?;
+    let has_graph_hits = !graph_locations.is_empty();
 
     let mut statement = connection
         .prepare("SELECT file, start_line, end_line, text FROM chunks WHERE project_id = ?1")
@@ -1543,12 +1620,27 @@ pub fn search_contexts(
         ranked.push(context);
     }
 
+    // Structure-first: boost chunks covering symbol defs, call sites, callers, includes.
+    apply_graph_boosts(&mut ranked, &graph_locations);
+
     let code_limit = if overview_question {
         limit.saturating_sub(1).max(1)
     } else {
         limit
     };
-    let mut selected = select_diverse_contexts(ranked, code_limit);
+    let mut selected = if has_graph_hits {
+        // Prefer high graph scores even if they concentrate in fewer directories.
+        ranked.sort_by(|left, right| {
+            right
+                .score
+                .cmp(&left.score)
+                .then(left.file.cmp(&right.file))
+                .then(left.start_line.cmp(&right.start_line))
+        });
+        ranked.into_iter().take(code_limit).collect::<Vec<_>>()
+    } else {
+        select_diverse_contexts(ranked, code_limit)
+    };
 
     if overview_question || selected.iter().all(|item| item.score == 0) {
         if let Ok(layout) = build_project_layout_context(connection, project_id) {
@@ -1610,6 +1702,189 @@ fn load_symbol_names(connection: &Connection, project_id: i64) -> Result<HashSet
         names.insert(row.map_err(sql_error)?);
     }
     Ok(names)
+}
+
+fn table_exists(connection: &Connection, table: &str) -> Result<bool, String> {
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?1",
+            params![table],
+            |row| row.get(0),
+        )
+        .map_err(sql_error)?;
+    Ok(count > 0)
+}
+
+#[derive(Debug, Clone)]
+struct GraphLocation {
+    file: String,
+    line: u64,
+    boost: i64,
+}
+
+/// Match question tokens to symbol / call names (exact lowercase match).
+fn match_graph_seed_names(
+    connection: &Connection,
+    project_id: i64,
+    tokens: &[String],
+) -> Result<Vec<String>, String> {
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut seeds = HashSet::new();
+    let mut symbol_statement = connection
+        .prepare("SELECT DISTINCT name FROM symbols WHERE project_id = ?1 AND lower(name) = ?2")
+        .map_err(sql_error)?;
+    let mut call_statement = connection
+        .prepare("SELECT DISTINCT name FROM calls WHERE project_id = ?1 AND lower(name) = ?2")
+        .map_err(sql_error)?;
+
+    for token in tokens {
+        let symbol_rows = symbol_statement
+            .query_map(params![project_id, token], |row| row.get::<_, String>(0))
+            .map_err(sql_error)?;
+        for row in symbol_rows {
+            seeds.insert(row.map_err(sql_error)?);
+        }
+
+        let call_rows = call_statement
+            .query_map(params![project_id, token], |row| row.get::<_, String>(0))
+            .map_err(sql_error)?;
+        for row in call_rows {
+            seeds.insert(row.map_err(sql_error)?);
+        }
+    }
+
+    Ok(seeds.into_iter().collect())
+}
+
+fn expand_graph_locations(
+    connection: &Connection,
+    project_id: i64,
+    seed_names: &[String],
+) -> Result<Vec<GraphLocation>, String> {
+    let mut locations = Vec::new();
+    if seed_names.is_empty() {
+        return Ok(locations);
+    }
+
+    let mut seed_files = HashSet::new();
+    let mut symbol_statement = connection
+        .prepare(
+            "SELECT file, line, is_definition FROM symbols
+             WHERE project_id = ?1 AND lower(name) = lower(?2)",
+        )
+        .map_err(sql_error)?;
+    let mut call_statement = connection
+        .prepare(
+            "SELECT file, line FROM calls
+             WHERE project_id = ?1 AND lower(name) = lower(?2)",
+        )
+        .map_err(sql_error)?;
+    let mut enclosing_statement = connection
+        .prepare(
+            "SELECT file, line FROM symbols
+             WHERE project_id = ?1 AND file = ?2 AND is_definition = 1 AND line <= ?3
+             ORDER BY line DESC LIMIT 1",
+        )
+        .map_err(sql_error)?;
+
+    for name in seed_names {
+        let symbol_rows = symbol_statement
+            .query_map(params![project_id, name], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)? as u64,
+                    row.get::<_, i64>(2)? != 0,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in symbol_rows {
+            let (file, line, is_definition) = row.map_err(sql_error)?;
+            seed_files.insert(file.clone());
+            locations.push(GraphLocation {
+                file,
+                line,
+                boost: if is_definition { 120 } else { 90 },
+            });
+        }
+
+        let call_rows = call_statement
+            .query_map(params![project_id, name], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+            })
+            .map_err(sql_error)?;
+        for row in call_rows {
+            let (file, line) = row.map_err(sql_error)?;
+            locations.push(GraphLocation {
+                file: file.clone(),
+                line,
+                boost: 80,
+            });
+
+            let enclosing = enclosing_statement
+                .query_row(params![project_id, file, line as i64], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)? as u64))
+                })
+                .optional()
+                .map_err(sql_error)?;
+            if let Some((caller_file, caller_line)) = enclosing {
+                seed_files.insert(caller_file.clone());
+                locations.push(GraphLocation {
+                    file: caller_file,
+                    line: caller_line,
+                    boost: 70,
+                });
+            }
+        }
+    }
+
+    if !seed_files.is_empty() {
+        let mut include_statement = connection
+            .prepare(
+                "SELECT file, line, resolved_path FROM includes WHERE project_id = ?1",
+            )
+            .map_err(sql_error)?;
+        let include_rows = include_statement
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)? as u64,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in include_rows {
+            let (file, line, resolved_path) = row.map_err(sql_error)?;
+            let touches_seed = seed_files.contains(&file)
+                || (!resolved_path.is_empty() && seed_files.contains(&resolved_path));
+            if touches_seed {
+                locations.push(GraphLocation {
+                    file,
+                    line,
+                    boost: 45,
+                });
+            }
+        }
+    }
+
+    Ok(locations)
+}
+
+fn apply_graph_boosts(contexts: &mut [SearchContext], locations: &[GraphLocation]) {
+    for context in contexts.iter_mut() {
+        let mut boost = 0_i64;
+        for location in locations {
+            if location.file == context.file
+                && location.line >= context.start_line
+                && location.line <= context.end_line
+            {
+                boost = boost.max(location.boost);
+            }
+        }
+        context.score += boost;
+    }
 }
 
 pub fn tokenize(question: &str) -> Vec<String> {
@@ -2010,7 +2285,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{parse_scan_progress_line, score_context, tokenize, SearchContext};
-    use std::collections::HashSet;
+    use std::collections::{BTreeMap, HashSet};
 
     #[test]
     fn scores_file_symbol_and_text_matches() {
@@ -2141,5 +2416,138 @@ data: [DONE]
             .collect();
         assert!(dirs.contains("dsps"));
         assert!(dirs.contains("utils"));
+    }
+
+    fn open_memory_db() -> rusqlite::Connection {
+        let connection = rusqlite::Connection::open_in_memory().expect("memory db");
+        super::migrate_database(&connection).expect("migrate");
+        connection
+    }
+
+    #[test]
+    fn write_index_persists_calls() {
+        let mut connection = open_memory_db();
+        let scan = super::ScanResult {
+            schema_version: 1,
+            root: "D:/demo".into(),
+            mode: "heuristic".into(),
+            confidence: "heuristic".into(),
+            scan_duration_ms: 0,
+            compile_commands: String::new(),
+            compile_commands_entries: 0,
+            reused_file_count: 0,
+            file_count: 0,
+            skipped_entries: 0,
+            stats: super::ScanStats::default(),
+            extensions: BTreeMap::new(),
+            top_level_layout: BTreeMap::new(),
+            second_level_layout: BTreeMap::new(),
+            diagnostics: Vec::new(),
+            includes: Vec::new(),
+            symbols: vec![super::SymbolInfo {
+                file: "src/a.cpp".into(),
+                line: 10,
+                kind: "function".into(),
+                name: "encryptFile".into(),
+                signature: "void encryptFile()".into(),
+                scope: String::new(),
+                is_definition: true,
+                confidence: "heuristic".into(),
+            }],
+            calls: vec![super::CallInfo {
+                file: "src/b.cpp".into(),
+                line: 42,
+                name: "encryptFile".into(),
+                confidence: "heuristic".into(),
+            }],
+            files: Vec::new(),
+        };
+
+        let project_id = super::write_index(&mut connection, &scan).expect("write_index");
+        let count: i64 = connection
+            .query_row(
+                "SELECT COUNT(*) FROM calls WHERE project_id = ?1 AND name = 'encryptFile'",
+                rusqlite::params![project_id],
+                |row| row.get(0),
+            )
+            .expect("count calls");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn graph_retrieval_prefers_definition_and_call_site_chunks() {
+        let connection = open_memory_db();
+        connection
+            .execute(
+                "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
+                 VALUES('D:/demo', 'now', 2, 2, 0, '[]', 'heuristic', 'heuristic')",
+                [],
+            )
+            .unwrap();
+        let project_id: i64 = connection
+            .query_row("SELECT id FROM projects", [], |row| row.get(0))
+            .unwrap();
+
+        connection
+            .execute(
+                "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
+                 VALUES(?1, 'src/crypto.cpp', 12, 'function', 'encryptFile', 'void encryptFile()', '', 1, 'heuristic')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
+                 VALUES(?1, 'src/main.cpp', 30, 'function', 'runPipeline', 'void runPipeline()', '', 1, 'heuristic')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO calls(project_id, file, line, name, confidence)
+                 VALUES(?1, 'src/main.cpp', 40, 'encryptFile', 'heuristic')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+
+        // Unrelated chunk with keyword noise that would win pure text scoring.
+        connection
+            .execute(
+                "INSERT INTO chunks(project_id, file, start_line, end_line, text)
+                 VALUES(?1, 'docs/notes.txt', 1, 20, 'encryptFile encryptFile encryptFile noise')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO chunks(project_id, file, start_line, end_line, text)
+                 VALUES(?1, 'src/crypto.cpp', 1, 40, 'void encryptFile() { /* def */ }')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO chunks(project_id, file, start_line, end_line, text)
+                 VALUES(?1, 'src/main.cpp', 21, 60, 'void runPipeline() { encryptFile(); }')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+
+        let selected =
+            super::search_contexts(&connection, project_id, "Where is encryptFile used?", 3)
+                .expect("search");
+        let files: HashSet<_> = selected.iter().map(|item| item.file.as_str()).collect();
+        assert!(
+            files.contains("src/crypto.cpp"),
+            "expected definition chunk, got {:?}",
+            selected.iter().map(|c| &c.file).collect::<Vec<_>>()
+        );
+        assert!(
+            files.contains("src/main.cpp"),
+            "expected call-site/caller chunk, got {:?}",
+            selected.iter().map(|c| &c.file).collect::<Vec<_>>()
+        );
+        assert!(selected[0].score >= selected.iter().map(|c| c.score).max().unwrap_or(0));
+        assert_ne!(selected[0].file, "docs/notes.txt");
     }
 }
