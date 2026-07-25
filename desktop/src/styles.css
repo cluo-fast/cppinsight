@@ -20,9 +20,12 @@
   box-sizing: border-box;
 }
 
-body {
+html,
+body,
+#root {
   margin: 0;
-  min-height: 100vh;
+  min-height: 100%;
+  height: 100%;
 }
 
 button,
@@ -34,7 +37,12 @@ textarea {
 .app-shell {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 20px 24px 56px;
+  padding: 16px 24px 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  box-sizing: border-box;
 }
 
 .topbar {
@@ -65,13 +73,16 @@ textarea {
 .topbar-actions,
 .settings-row,
 .ask-box,
-.ask-header,
 .stats,
 .chip-row {
   display: flex;
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
+}
+
+.topbar {
+  flex: 0 0 auto;
 }
 
 button {
@@ -113,7 +124,6 @@ button:disabled {
 .settings-card,
 .welcome,
 .panel,
-.ask-panel,
 .project-bar {
   background: rgba(24, 34, 45, 0.94);
   border: 1px solid var(--line);
@@ -121,6 +131,57 @@ button:disabled {
   padding: 18px;
   box-shadow: var(--shadow);
   margin-bottom: 16px;
+}
+
+.workspace {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.workspace-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: 12px;
+}
+
+.composer {
+  flex: 0 0 auto;
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0 -8px;
+  padding: 12px 8px 16px;
+  background:
+    linear-gradient(180deg, rgba(16, 22, 29, 0), rgba(16, 22, 29, 0.92) 18%, rgba(16, 22, 29, 0.98) 40%);
+  border-top: 1px solid rgba(44, 58, 72, 0.85);
+}
+
+.composer .ask-box {
+  background: rgba(24, 34, 45, 0.96);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 10px;
+  box-shadow: var(--shadow);
+  margin-bottom: 0;
+  align-items: flex-end;
+}
+
+.composer .ask-box textarea {
+  resize: none;
+  min-height: 52px;
+  max-height: 160px;
+}
+
+.composer .ask-box button {
+  align-self: flex-end;
+  min-width: 88px;
+}
+
+.messages-panel {
+  margin-bottom: 8px;
 }
 
 .banner.error {
@@ -173,7 +234,6 @@ button:disabled {
 }
 
 .panel h2,
-.ask-header h2,
 .settings-card h2 {
   margin: 0 0 12px;
   font-size: 16px;
@@ -269,13 +329,8 @@ button:disabled {
   padding: 12px 14px;
 }
 
-.ask-header {
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
 .chip-row {
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 
 .ask-box {

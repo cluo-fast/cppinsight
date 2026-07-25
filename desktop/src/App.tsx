@@ -271,98 +271,128 @@ export default function App() {
           </button>
         </section>
       ) : (
-        <>
-          <section className="project-bar">
-            <div>
-              <div className="label">当前项目</div>
-              <div className="path">{overview.root}</div>
-            </div>
-            <div className="stats">
-              <span>{overview.file_count} 个文件</span>
-              <span>{overview.stats.lines.code} 行代码</span>
-              <span>{overview.symbol_count} 个符号</span>
-              <span>{overview.mode || "heuristic"}</span>
-            </div>
-          </section>
+        <div className="workspace">
+          <div className="workspace-scroll">
+            <section className="project-bar">
+              <div>
+                <div className="label">当前项目</div>
+                <div className="path">{overview.root}</div>
+              </div>
+              <div className="stats">
+                <span>{overview.file_count} 个文件</span>
+                <span>{overview.stats.lines.code} 行代码</span>
+                <span>{overview.symbol_count} 个符号</span>
+                <span>{overview.mode || "heuristic"}</span>
+                <button
+                  className="secondary"
+                  disabled={busy}
+                  onClick={() =>
+                    void withBusy("正在生成客户摘要…", async () => {
+                      const text = await exportClientSummary(overview.root, overview.project_id);
+                      setSummary(text);
+                    })
+                  }
+                >
+                  导出客户摘要
+                </button>
+              </div>
+            </section>
 
-          <section className="panel-grid">
-            <article className="panel">
-              <h2>入口候选</h2>
-              {entries.length === 0 ? (
-                <p className="muted">未发现常见入口符号，可直接提问排查。</p>
-              ) : (
+            <section className="panel-grid">
+              <article className="panel">
+                <h2>入口候选</h2>
+                {entries.length === 0 ? (
+                  <p className="muted">未发现常见入口符号，可直接提问排查。</p>
+                ) : (
+                  <ul className="file-list">
+                    {entries.map((entry) => {
+                      const display = splitDisplayPath(entry.file);
+                      return (
+                        <li
+                          key={`${entry.file}:${entry.line}:${entry.name}`}
+                          className="file-row"
+                          title={`${entry.file}:${entry.line}`}
+                        >
+                          <div className="file-main">
+                            <span className="file-name">{entry.name}</span>
+                            <span className="file-dir">
+                              {display.name}:{entry.line}
+                            </span>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </article>
+
+              <article className="panel">
+                <h2>模块地图</h2>
                 <ul className="file-list">
-                  {entries.map((entry) => {
-                    const display = splitDisplayPath(entry.file);
+                  {modules.map(([path, count]) => (
+                    <li key={path} className="file-row" title={path}>
+                      <div className="file-main">
+                        <span className="file-name">{path}</span>
+                      </div>
+                      <span className="file-meta">{count} 文件</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
+
+              <article className="panel">
+                <h2>热点文件</h2>
+                <ul className="file-list">
+                  {overview.hotspots.map((item) => {
+                    const display = splitDisplayPath(item.path);
                     return (
-                      <li
-                        key={`${entry.file}:${entry.line}:${entry.name}`}
-                        className="file-row"
-                        title={`${entry.file}:${entry.line}`}
-                      >
+                      <li key={item.path} className="file-row" title={item.path}>
                         <div className="file-main">
-                          <span className="file-name">{entry.name}</span>
-                          <span className="file-dir">
-                            {display.name}:{entry.line}
-                          </span>
+                          <span className="file-name">{display.name}</span>
+                          <span className="file-dir">{display.dir}</span>
                         </div>
+                        <span className="file-meta">{item.code_lines} 行</span>
                       </li>
                     );
                   })}
                 </ul>
-              )}
-            </article>
+              </article>
+            </section>
 
-            <article className="panel">
-              <h2>模块地图</h2>
-              <ul className="file-list">
-                {modules.map(([path, count]) => (
-                  <li key={path} className="file-row" title={path}>
-                    <div className="file-main">
-                      <span className="file-name">{path}</span>
+            <section className="panel messages-panel">
+              <h2>对话</h2>
+              <div className="messages">
+                {messages.length === 0 ? (
+                  <p className="muted">还没有对话。可点下方推荐问题，或直接输入。</p>
+                ) : (
+                  messages.map((message) => (
+                    <div key={message.id} className={`message ${message.role}`}>
+                      <div className="role">{message.role === "user" ? "你" : "CppInsight"}</div>
+                      <p>{message.text}</p>
+                      {message.citations?.length ? (
+                        <ul>
+                          {message.citations.map((citation) => (
+                            <li key={`${message.id}-${citation.title}`}>
+                              <code>{citation.title}</code>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
-                    <span className="file-meta">{count} 文件</span>
-                  </li>
-                ))}
-              </ul>
-            </article>
+                  ))
+                )}
+              </div>
+            </section>
 
-            <article className="panel">
-              <h2>热点文件</h2>
-              <ul className="file-list">
-                {overview.hotspots.map((item) => {
-                  const display = splitDisplayPath(item.path);
-                  return (
-                    <li key={item.path} className="file-row" title={item.path}>
-                      <div className="file-main">
-                        <span className="file-name">{display.name}</span>
-                        <span className="file-dir">{display.dir}</span>
-                      </div>
-                      <span className="file-meta">{item.code_lines} 行</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </article>
-          </section>
+            {summary ? (
+              <section className="panel">
+                <h2>客户摘要</h2>
+                <pre>{summary}</pre>
+              </section>
+            ) : null}
+          </div>
 
-          <section className="ask-panel">
-            <div className="ask-header">
-              <h2>提问</h2>
-              <button
-                className="secondary"
-                disabled={busy}
-                onClick={() =>
-                  void withBusy("正在生成客户摘要…", async () => {
-                    const text = await exportClientSummary(overview.root, overview.project_id);
-                    setSummary(text);
-                  })
-                }
-              >
-                导出客户摘要
-              </button>
-            </div>
-
+          <footer className="composer">
             <div className="chip-row">
               {SUGGESTED_QUESTIONS.map((item) => (
                 <button
@@ -378,49 +408,27 @@ export default function App() {
                 </button>
               ))}
             </div>
-
             <div className="ask-box">
               <textarea
                 value={question}
                 onChange={(event) => setQuestion(event.target.value)}
-                rows={3}
-                placeholder="用中文问这个项目的任何问题…"
+                rows={2}
+                placeholder="问这个项目任何问题…"
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault();
+                    if (!busy && question.trim()) {
+                      void sendQuestion(question);
+                    }
+                  }
+                }}
               />
               <button disabled={busy || !question.trim()} onClick={() => void sendQuestion(question)}>
                 发送
               </button>
             </div>
-
-            <div className="messages">
-              {messages.length === 0 ? (
-                <p className="muted">还没有对话。可以点上面的推荐问题，或自己输入。</p>
-              ) : (
-                messages.map((message) => (
-                  <div key={message.id} className={`message ${message.role}`}>
-                    <div className="role">{message.role === "user" ? "你" : "CppInsight"}</div>
-                    <p>{message.text}</p>
-                    {message.citations?.length ? (
-                      <ul>
-                        {message.citations.map((citation) => (
-                          <li key={`${message.id}-${citation.title}`}>
-                            <code>{citation.title}</code>
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          {summary ? (
-            <section className="panel">
-              <h2>客户摘要</h2>
-              <pre>{summary}</pre>
-            </section>
-          ) : null}
-        </>
+          </footer>
+        </div>
       )}
     </div>
   );
