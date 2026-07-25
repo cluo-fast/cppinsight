@@ -198,16 +198,16 @@ pub async fn ask_project_at_with_settings(
     db_path: &Path,
     settings_db_path: Option<&Path>,
 ) -> Result<AskResponse, String> {
-    let (contexts, api_key) = {
+    let (contexts, ai_settings) = {
         let connection = open_database_at(db_path)?;
         let contexts = search_contexts(&connection, project_id, question, 8)?;
-        let api_key = if let Some(settings_path) = settings_db_path {
+        let ai_settings = if let Some(settings_path) = settings_db_path {
             let settings = open_database_at(settings_path)?;
-            read_openai_api_key(&settings)?
+            read_openai_settings(&settings)?
         } else {
-            read_openai_api_key(&connection)?
+            read_openai_settings(&connection)?
         };
-        (contexts, api_key)
+        (contexts, ai_settings)
     };
 
     if contexts.is_empty() {
@@ -217,14 +217,14 @@ pub async fn ask_project_at_with_settings(
         });
     }
 
-    let Some(api_key) = api_key else {
+    if ai_settings.api_key.trim().is_empty() {
         return Ok(AskResponse {
-            answer: "OpenAI API key is not configured. Set OPENAI_API_KEY before launching, or save a key with: cppinsight-workbench set-key <key>".to_string(),
+            answer: "OpenAI API key is not configured. Set it in Settings, or via OPENAI_API_KEY.".to_string(),
             citations: contexts_to_citations(&contexts),
         });
-    };
+    }
 
-    let answer = call_openai(&api_key, question, &contexts).await?;
+    let answer = call_openai(&ai_settings, question, &contexts).await?;
     Ok(AskResponse {
         answer,
         citations: contexts_to_citations(&contexts),
@@ -576,22 +576,7 @@ fn copy_project_between_dbs(
 }
 
 fn settings_table_api_key(connection: &Connection) -> Result<Option<String>, String> {
-    let value: Option<String> = connection
-        .query_row(
-            "SELECT value FROM settings WHERE key = 'openai_api_key'",
-            [],
-            |row| row.get(0),
-        )
-        .optional()
-        .map_err(sql_error)?;
-    Ok(value.and_then(|item| {
-        let trimmed = item.trim().to_string();
-        if trimmed.is_empty() {
-            None
-        } else {
-            Some(trimmed)
-        }
-    }))
+    read_setting_value(connection, "openai_api_key")
 }
 
 fn migrate_api_key_once(legacy: &Connection, settings_db: &Path) -> Result<(), String> {
@@ -1498,38 +1483,137 @@ fn contexts_to_citations(contexts: &[SearchContext]) -> Vec<Citation> {
         .collect()
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenAiSettings {
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+}
+
+impl Default for OpenAiSettings {
+    fn default() -> Self {
+        Self {
+            base_url: default_openai_base_url(),
+            api_key: String::new(),
+            model: default_openai_model(),
+        }
+    }
+}
+
+pub fn default_openai_base_url() -> String {
+    "https://api.openai.com/v1".to_string()
+}
+
+pub fn default_openai_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
+fn read_setting_value(connection: &Connection, key: &str) -> Result<Option<String>, String> {
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT value FROM settings WHERE key = ?1",
+            params![key],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sql_error)?;
+    Ok(value.and_then(|item| {
+        let trimmed = item.trim().to_string();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
+    }))
+}
+
+fn upsert_setting_value(connection: &Connection, key: &str, value: &str) -> Result<(), String> {
+    connection
+        .execute(
+            "INSERT INTO settings(key, value) VALUES(?1, ?2)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![key, value],
+        )
+        .map_err(sql_error)?;
+    Ok(())
+}
+
 pub fn read_openai_api_key(connection: &Connection) -> Result<Option<String>, String> {
+    let settings = read_openai_settings(connection)?;
+    if settings.api_key.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(settings.api_key))
+    }
+}
+
+pub fn read_openai_settings(connection: &Connection) -> Result<OpenAiSettings, String> {
+    let mut settings = OpenAiSettings::default();
+
+    if let Ok(value) = std::env::var("OPENAI_BASE_URL").or_else(|_| std::env::var("OPENAI_API_BASE"))
+    {
+        let trimmed = value.trim().trim_end_matches('/').to_string();
+        if !trimmed.is_empty() {
+            settings.base_url = trimmed;
+        }
+    } else if let Some(value) = read_setting_value(connection, "openai_base_url")? {
+        settings.base_url = value.trim_end_matches('/').to_string();
+    }
+
     if let Ok(value) = std::env::var("OPENAI_API_KEY") {
         let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
-            return Ok(Some(trimmed));
+            settings.api_key = trimmed;
         }
+    } else if let Some(value) = read_setting_value(connection, "openai_api_key")? {
+        settings.api_key = value;
     }
 
-    let mut statement = connection
-        .prepare("SELECT value FROM settings WHERE key = 'openai_api_key'")
-        .map_err(sql_error)?;
-    let mut rows = statement.query([]).map_err(sql_error)?;
-    if let Some(row) = rows.next().map_err(sql_error)? {
-        let value: String = row.get(0).map_err(sql_error)?;
+    if let Ok(value) = std::env::var("OPENAI_MODEL") {
         let trimmed = value.trim().to_string();
         if !trimmed.is_empty() {
-            return Ok(Some(trimmed));
+            settings.model = trimmed;
         }
+    } else if let Some(value) = read_setting_value(connection, "openai_model")? {
+        settings.model = value;
     }
-    Ok(None)
+
+    Ok(settings)
 }
 
 pub fn set_api_key_at(db_path: &Path, api_key: &str) -> Result<(), String> {
     let connection = open_database_at(db_path)?;
-    connection
-        .execute(
-            "INSERT INTO settings(key, value) VALUES('openai_api_key', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![api_key.trim()],
-        )
-        .map_err(sql_error)?;
+    upsert_setting_value(&connection, "openai_api_key", api_key.trim())
+}
+
+pub fn set_openai_settings_at(db_path: &Path, settings: &OpenAiSettings) -> Result<(), String> {
+    let connection = open_database_at(db_path)?;
+    let base_url = settings.base_url.trim().trim_end_matches('/');
+    let base_url = if base_url.is_empty() {
+        default_openai_base_url()
+    } else {
+        base_url.to_string()
+    };
+    let model = settings.model.trim();
+    let model = if model.is_empty() {
+        default_openai_model()
+    } else {
+        model.to_string()
+    };
+
+    upsert_setting_value(&connection, "openai_base_url", &base_url)?;
+    upsert_setting_value(&connection, "openai_api_key", settings.api_key.trim())?;
+    upsert_setting_value(&connection, "openai_model", &model)?;
     Ok(())
+}
+
+pub fn chat_completions_url(base_url: &str) -> String {
+    let trimmed = base_url.trim().trim_end_matches('/');
+    if trimmed.ends_with("/chat/completions") {
+        trimmed.to_string()
+    } else {
+        format!("{trimmed}/chat/completions")
+    }
 }
 
 pub fn list_projects(db_path: &Path) -> Result<Vec<(i64, String, String)>, String> {
@@ -1599,11 +1683,10 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
 }
 
 async fn call_openai(
-    api_key: &str,
+    settings: &OpenAiSettings,
     question: &str,
     contexts: &[SearchContext],
 ) -> Result<String, String> {
-    let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
     let context_text = contexts
         .iter()
         .map(|context| {
@@ -1616,7 +1699,7 @@ async fn call_openai(
         .join("\n\n");
 
     let body = json!({
-        "model": model,
+        "model": settings.model,
         "temperature": 0.2,
         "messages": [
             {
@@ -1630,9 +1713,10 @@ async fn call_openai(
         ]
     });
 
+    let endpoint = chat_completions_url(&settings.base_url);
     let response = reqwest::Client::new()
-        .post("https://api.openai.com/v1/chat/completions")
-        .bearer_auth(api_key)
+        .post(&endpoint)
+        .bearer_auth(&settings.api_key)
         .json(&body)
         .send()
         .await
@@ -1668,6 +1752,8 @@ pub fn run() {
             commands::index_scan_json,
             commands::get_project_overview,
             commands::set_openai_api_key,
+            commands::get_openai_settings,
+            commands::set_openai_settings,
             commands::ask_project,
             commands::export_client_summary
         ])
@@ -1719,5 +1805,21 @@ mod tests {
         let path = super::project_index_db_path(std::path::Path::new("D:/repos/demo"));
         assert!(path.ends_with(std::path::Path::new(".cppinsight/index.sqlite"))
             || path.ends_with(std::path::Path::new(".cppinsight\\index.sqlite")));
+    }
+
+    #[test]
+    fn builds_chat_completions_url_from_base() {
+        assert_eq!(
+            super::chat_completions_url("https://api.openai.com/v1"),
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(
+            super::chat_completions_url("https://proxy.example.com/v1/"),
+            "https://proxy.example.com/v1/chat/completions"
+        );
+        assert_eq!(
+            super::chat_completions_url("https://proxy.example.com/v1/chat/completions"),
+            "https://proxy.example.com/v1/chat/completions"
+        );
     }
 }

@@ -1,8 +1,9 @@
 use crate::{
     ask_project_at_with_settings, build_client_summary, emit_index_progress, index_db_path_for_root,
     index_scan_json_at, load_project_overview, migrate_legacy_project_if_needed, open_database_at,
-    overview_from_scan, run_scan, run_scan_with_progress, set_api_key_at, settings_db_path_from_app,
-    write_index, AskResponse, IndexProgressEvent, ProjectOverview, ScanResult,
+    overview_from_scan, read_openai_settings, run_scan, run_scan_with_progress, set_api_key_at,
+    set_openai_settings_at, settings_db_path_from_app, write_index, AskResponse, IndexProgressEvent,
+    OpenAiSettings, ProjectOverview, ScanResult,
 };
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -92,6 +93,19 @@ pub fn get_project_overview(
 pub fn set_openai_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), String> {
     let settings_path = settings_db_path_from_app(&app)?;
     set_api_key_at(&settings_path, &api_key)
+}
+
+#[tauri::command]
+pub fn get_openai_settings(app: tauri::AppHandle) -> Result<OpenAiSettings, String> {
+    let settings_path = settings_db_path_from_app(&app)?;
+    let connection = open_database_at(&settings_path)?;
+    read_openai_settings(&connection)
+}
+
+#[tauri::command]
+pub fn set_openai_settings(app: tauri::AppHandle, settings: OpenAiSettings) -> Result<(), String> {
+    let settings_path = settings_db_path_from_app(&app)?;
+    set_openai_settings_at(&settings_path, &settings)
 }
 
 #[tauri::command]

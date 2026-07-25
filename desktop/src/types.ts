@@ -124,3 +124,9 @@ export interface IndexProgressEvent {
   current_file?: string;
   message?: string;
 }
+
+export interface OpenAiSettings {
+  base_url: string;
+  api_key: string;
+  model: string;
+}

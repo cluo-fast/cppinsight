@@ -1,6 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import type { AskResponse, IndexProgressEvent, ProjectOverview, ScanResult } from "./types";
+import type {
+  AskResponse,
+  IndexProgressEvent,
+  OpenAiSettings,
+  ProjectOverview,
+  ScanResult
+} from "./types";
 
 export function formatIndexProgress(event: IndexProgressEvent): string {
   if (event.stage === "indexing") {
@@ -45,6 +51,14 @@ export function getProjectOverview(root: string, projectId: number): Promise<Pro
 
 export function setOpenAiApiKey(apiKey: string): Promise<void> {
   return invoke<void>("set_openai_api_key", { apiKey });
+}
+
+export function getOpenAiSettings(): Promise<OpenAiSettings> {
+  return invoke<OpenAiSettings>("get_openai_settings");
+}
+
+export function setOpenAiSettings(settings: OpenAiSettings): Promise<void> {
+  return invoke<void>("set_openai_settings", { settings });
 }
 
 export function askProject(

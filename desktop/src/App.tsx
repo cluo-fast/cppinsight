@@ -5,17 +5,25 @@ import {
   chooseProjectDirectory,
   exportClientSummary,
   formatIndexProgress,
+  getOpenAiSettings,
   indexProject,
-  setOpenAiApiKey
+  setOpenAiSettings
 } from "./api";
 import type {
   AskResponse,
   ChatMessage,
   IndexProgressEvent,
+  OpenAiSettings,
   ProjectOverview,
   SymbolInfo
 } from "./types";
 import "./styles.css";
+
+const DEFAULT_AI_SETTINGS: OpenAiSettings = {
+  base_url: "https://api.openai.com/v1",
+  api_key: "",
+  model: "gpt-4o-mini"
+};
 
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -57,7 +65,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [apiKey, setApiKey] = useState("");
+  const [aiSettings, setAiSettings] = useState<OpenAiSettings>(DEFAULT_AI_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [question, setQuestion] = useState(SUGGESTED_QUESTIONS[0]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -159,7 +167,24 @@ export default function App() {
           <button
             className="secondary"
             disabled={busy}
-            onClick={() => setShowSettings((value) => !value)}
+            onClick={() => {
+              void (async () => {
+                const next = !showSettings;
+                setShowSettings(next);
+                if (next) {
+                  try {
+                    const loaded = await getOpenAiSettings();
+                    setAiSettings({
+                      base_url: loaded.base_url || DEFAULT_AI_SETTINGS.base_url,
+                      api_key: loaded.api_key || "",
+                      model: loaded.model || DEFAULT_AI_SETTINGS.model
+                    });
+                  } catch {
+                    setAiSettings(DEFAULT_AI_SETTINGS);
+                  }
+                }
+              })();
+            }}
           >
             设置
           </button>
@@ -169,21 +194,54 @@ export default function App() {
       {showSettings ? (
         <section className="settings-card">
           <h2>AI 设置</h2>
-          <p>问答需要 OpenAI API Key。也可事先设置环境变量 OPENAI_API_KEY。</p>
-          <div className="settings-row">
+          <p>
+            类似 Codex / Claude Code：配置 Base URL、API Key、Model，可接官方接口或兼容网关。环境变量
+            OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL 优先于此处保存的值。
+          </p>
+          <label className="settings-field">
+            <span>Base URL</span>
+            <input
+              type="url"
+              placeholder="https://api.openai.com/v1"
+              value={aiSettings.base_url}
+              onChange={(event) =>
+                setAiSettings((current) => ({ ...current, base_url: event.target.value }))
+              }
+            />
+          </label>
+          <label className="settings-field">
+            <span>API Key</span>
             <input
               type="password"
-              placeholder="粘贴 OpenAI API Key"
-              value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
+              placeholder="sk-... 或网关 Token"
+              value={aiSettings.api_key}
+              onChange={(event) =>
+                setAiSettings((current) => ({ ...current, api_key: event.target.value }))
+              }
             />
+          </label>
+          <label className="settings-field">
+            <span>Model</span>
+            <input
+              type="text"
+              placeholder="gpt-4o-mini"
+              value={aiSettings.model}
+              onChange={(event) =>
+                setAiSettings((current) => ({ ...current, model: event.target.value }))
+              }
+            />
+          </label>
+          <div className="settings-row">
             <button
               className="secondary"
-              disabled={busy || !apiKey.trim()}
+              disabled={busy || !aiSettings.api_key.trim()}
               onClick={() =>
-                void withBusy("正在保存密钥…", async () => {
-                  await setOpenAiApiKey(apiKey.trim());
-                  setApiKey("");
+                void withBusy("正在保存 AI 设置…", async () => {
+                  await setOpenAiSettings({
+                    base_url: aiSettings.base_url.trim() || DEFAULT_AI_SETTINGS.base_url,
+                    api_key: aiSettings.api_key.trim(),
+                    model: aiSettings.model.trim() || DEFAULT_AI_SETTINGS.model
+                  });
                   setShowSettings(false);
                 })
               }
