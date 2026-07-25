@@ -75,8 +75,12 @@ export default function App() {
     if (!overview) {
       return [];
     }
-    return Object.entries(overview.second_level_layout || overview.top_level_layout)
-      .sort((left, right) => right[1] - left[1])
+    // Prefer top-level directories so sibling folders like dsps/ and utils/ both show.
+    // second_level_layout often becomes "dir/file.cpp" in shallow trees and crowds out peers.
+    const layout = overview.top_level_layout || overview.second_level_layout || {};
+    return Object.entries(layout)
+      .filter(([name]) => name !== ".cppinsight")
+      .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
       .slice(0, 12);
   }, [overview]);
 
