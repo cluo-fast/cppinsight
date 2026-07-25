@@ -1382,6 +1382,128 @@ fn build_chunks(scan: &ScanResult) -> Result<Vec<SearchContext>, String> {
     Ok(chunks)
 }
 
+fn top_level_dir(path: &str) -> String {
+    path.split(['/', '\\'])
+        .next()
+        .unwrap_or(".")
+        .to_string()
+}
+
+fn is_overview_question(question: &str) -> bool {
+    const KEYWORDS: &[&str] = &[
+        "目录",
+        "模块",
+        "结构",
+        "布局",
+        "顶层",
+        "负责",
+        "overview",
+        "layout",
+        "module",
+        "directory",
+        "folder",
+        "structure",
+    ];
+    let lower = question.to_lowercase();
+    KEYWORDS.iter().any(|keyword| lower.contains(keyword))
+}
+
+fn build_project_layout_context(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<SearchContext, String> {
+    let root: String = connection
+        .query_row(
+            "SELECT root FROM projects WHERE id = ?1",
+            params![project_id],
+            |row| row.get(0),
+        )
+        .map_err(sql_error)?;
+
+    let mut statement = connection
+        .prepare("SELECT path FROM files WHERE project_id = ?1 ORDER BY path")
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map(params![project_id], |row| row.get::<_, String>(0))
+        .map_err(sql_error)?;
+
+    let mut by_dir: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for row in rows {
+        let path = row.map_err(sql_error)?;
+        let dir = top_level_dir(&path);
+        by_dir.entry(dir).or_default().push(path);
+    }
+
+    let mut text = String::new();
+    text.push_str(&format!("Project root: {root}\n"));
+    text.push_str("Top-level directories and indexed C/C++ files:\n");
+    for (dir, paths) in &by_dir {
+        text.push_str(&format!("- {dir}/ ({count} files)\n", count = paths.len()));
+        for path in paths.iter().take(8) {
+            text.push_str(&format!("  - {path}\n"));
+        }
+        if paths.len() > 8 {
+            text.push_str(&format!("  - ... {} more\n", paths.len() - 8));
+        }
+    }
+
+    Ok(SearchContext {
+        file: "<project-layout>".to_string(),
+        start_line: 1,
+        end_line: text.lines().count() as u64,
+        text,
+        score: 1_000,
+    })
+}
+
+fn select_diverse_contexts(mut ranked: Vec<SearchContext>, limit: usize) -> Vec<SearchContext> {
+    if limit == 0 {
+        return Vec::new();
+    }
+
+    ranked.sort_by(|left, right| {
+        right
+            .score
+            .cmp(&left.score)
+            .then(left.file.cmp(&right.file))
+            .then(left.start_line.cmp(&right.start_line))
+    });
+
+    let mut selected = Vec::new();
+    let mut per_dir: BTreeMap<String, usize> = BTreeMap::new();
+    let max_per_dir = std::cmp::max(1, limit / 2);
+
+    for context in &ranked {
+        if selected.len() >= limit {
+            break;
+        }
+        let dir = top_level_dir(&context.file);
+        let count = per_dir.get(&dir).copied().unwrap_or(0);
+        if count >= max_per_dir {
+            continue;
+        }
+        *per_dir.entry(dir).or_insert(0) += 1;
+        selected.push(context.clone());
+    }
+
+    // Fill remaining slots if diversity filter skipped too many.
+    if selected.len() < limit {
+        for context in ranked {
+            if selected.len() >= limit {
+                break;
+            }
+            if selected.iter().any(|item| {
+                item.file == context.file && item.start_line == context.start_line
+            }) {
+                continue;
+            }
+            selected.push(context);
+        }
+    }
+
+    selected
+}
+
 pub fn search_contexts(
     connection: &Connection,
     project_id: i64,
@@ -1390,6 +1512,7 @@ pub fn search_contexts(
 ) -> Result<Vec<SearchContext>, String> {
     let tokens = tokenize(question);
     let symbol_names = load_symbol_names(connection, project_id)?;
+    let overview_question = is_overview_question(question);
 
     let mut statement = connection
         .prepare("SELECT file, start_line, end_line, text FROM chunks WHERE project_id = ?1")
@@ -1407,18 +1530,71 @@ pub fn search_contexts(
         })
         .map_err(sql_error)?;
 
-    let mut contexts = Vec::new();
+    let mut ranked = Vec::new();
     for row in rows {
         let mut context = row.map_err(sql_error)?;
         context.score = score_context(&context, &tokens, &symbol_names);
-        if context.score > 0 || contexts.len() < limit {
-            contexts.push(context);
+        if overview_question {
+            // Slightly prefer first chunk of each file for directory overview questions.
+            if context.start_line <= 1 {
+                context.score += 2;
+            }
+        }
+        ranked.push(context);
+    }
+
+    let code_limit = if overview_question {
+        limit.saturating_sub(1).max(1)
+    } else {
+        limit
+    };
+    let mut selected = select_diverse_contexts(ranked, code_limit);
+
+    if overview_question || selected.iter().all(|item| item.score == 0) {
+        if let Ok(layout) = build_project_layout_context(connection, project_id) {
+            selected.insert(0, layout);
+            selected.truncate(limit.max(1));
         }
     }
 
-    contexts.sort_by(|left, right| right.score.cmp(&left.score).then(left.file.cmp(&right.file)));
-    contexts.truncate(limit);
-    Ok(contexts)
+    // Ensure at least one snippet per top-level directory when asking overview questions.
+    if overview_question {
+        let mut have: HashSet<String> = selected
+            .iter()
+            .filter(|item| item.file != "<project-layout>")
+            .map(|item| top_level_dir(&item.file))
+            .collect();
+        let mut statement = connection
+            .prepare(
+                "SELECT file, start_line, end_line, text FROM chunks
+                 WHERE project_id = ?1 AND start_line = 1
+                 ORDER BY file",
+            )
+            .map_err(sql_error)?;
+        let starters = statement
+            .query_map(params![project_id], |row| {
+                Ok(SearchContext {
+                    file: row.get(0)?,
+                    start_line: row.get::<_, i64>(1)? as u64,
+                    end_line: row.get::<_, i64>(2)? as u64,
+                    text: row.get(3)?,
+                    score: 1,
+                })
+            })
+            .map_err(sql_error)?;
+        for starter in starters {
+            let context = starter.map_err(sql_error)?;
+            let dir = top_level_dir(&context.file);
+            if have.contains(&dir) {
+                continue;
+            }
+            have.insert(dir);
+            selected.push(context);
+        }
+        selected.truncate(limit.max(selected.len().min(12)));
+    }
+
+    Ok(selected)
 }
 
 fn load_symbol_names(connection: &Connection, project_id: i64) -> Result<HashSet<String>, String> {
@@ -1438,7 +1614,8 @@ fn load_symbol_names(connection: &Connection, project_id: i64) -> Result<HashSet
 
 pub fn tokenize(question: &str) -> Vec<String> {
     let mut tokens = HashSet::new();
-    for raw in question.split(|character: char| !character.is_alphanumeric() && character != '_') {
+    // Prefer ASCII identifiers — they match source paths/symbols. Pure CJK phrases rarely help.
+    for raw in question.split(|character: char| !character.is_ascii_alphanumeric() && character != '_') {
         let token = raw.trim().to_lowercase();
         if token.len() >= 3 {
             tokens.insert(token);
@@ -1916,5 +2093,53 @@ data: [DONE]
             super::parse_chat_completion_body(raw).unwrap(),
             "入口在 main"
         );
+    }
+
+    #[test]
+    fn detects_overview_questions() {
+        assert!(super::is_overview_question("这个项目的顶层目录分别大概负责什么？"));
+        assert!(super::is_overview_question("project module layout"));
+        assert!(!super::is_overview_question("Where is encryptFile implemented?"));
+    }
+
+    #[test]
+    fn diversifies_contexts_across_top_level_dirs() {
+        let ranked = vec![
+            super::SearchContext {
+                file: "dsps/a.cpp".into(),
+                start_line: 1,
+                end_line: 10,
+                text: "a".into(),
+                score: 5,
+            },
+            super::SearchContext {
+                file: "dsps/b.cpp".into(),
+                start_line: 1,
+                end_line: 10,
+                text: "b".into(),
+                score: 4,
+            },
+            super::SearchContext {
+                file: "dsps/c.cpp".into(),
+                start_line: 1,
+                end_line: 10,
+                text: "c".into(),
+                score: 3,
+            },
+            super::SearchContext {
+                file: "utils/u.cpp".into(),
+                start_line: 1,
+                end_line: 10,
+                text: "u".into(),
+                score: 2,
+            },
+        ];
+        let selected = super::select_diverse_contexts(ranked, 3);
+        let dirs: HashSet<_> = selected
+            .iter()
+            .map(|item| super::top_level_dir(&item.file))
+            .collect();
+        assert!(dirs.contains("dsps"));
+        assert!(dirs.contains("utils"));
     }
 }
