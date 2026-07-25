@@ -25,8 +25,20 @@ const DEFAULT_AI_SETTINGS: OpenAiSettings = {
   model: "gpt-4o-mini"
 };
 
+type ProjectSession = {
+  id: string;
+  overview: ProjectOverview;
+  messages: ChatMessage[];
+  question: string;
+  summary: string;
+};
+
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function normalizeRootKey(path: string): string {
+  return path.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
 }
 
 function splitDisplayPath(path: string): { name: string; dir: string; full: string } {
@@ -61,22 +73,25 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export default function App() {
-  const [overview, setOverview] = useState<ProjectOverview | null>(null);
+  const [sessions, setSessions] = useState<ProjectSession[]>([]);
+  const [activeRoot, setActiveRoot] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [aiSettings, setAiSettings] = useState<OpenAiSettings>(DEFAULT_AI_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
-  const [question, setQuestion] = useState(SUGGESTED_QUESTIONS[0]);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [summary, setSummary] = useState("");
+
+  const active = useMemo(
+    () => sessions.find((session) => session.id === activeRoot) ?? null,
+    [sessions, activeRoot]
+  );
+
+  const overview = active?.overview ?? null;
 
   const modules = useMemo(() => {
     if (!overview) {
       return [];
     }
-    // Prefer top-level directories so sibling folders like dsps/ and utils/ both show.
-    // second_level_layout often becomes "dir/file.cpp" in shallow trees and crowds out peers.
     const layout = overview.top_level_layout || overview.second_level_layout || {};
     return Object.entries(layout)
       .filter(([name]) => name !== ".cppinsight")
@@ -88,6 +103,17 @@ export default function App() {
     () => (overview ? entryPoints(overview.symbols) : []),
     [overview]
   );
+
+  function updateActiveSession(patch: Partial<Omit<ProjectSession, "id">>) {
+    if (!activeRoot) {
+      return;
+    }
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === activeRoot ? { ...session, ...patch } : session
+      )
+    );
+  }
 
   async function withBusy(label: string, action: () => Promise<void>) {
     setBusy(true);
@@ -117,10 +143,31 @@ export default function App() {
           setStatus(formatIndexProgress(event.payload));
         });
         const next = await indexProject(path);
-        setOverview(next);
-        setMessages([]);
-        setSummary("");
-        setQuestion(SUGGESTED_QUESTIONS[0]);
+        const id = normalizeRootKey(next.root);
+        setSessions((current) => {
+          const existing = current.find((session) => session.id === id);
+          if (existing) {
+            return current.map((session) =>
+              session.id === id
+                ? {
+                    ...session,
+                    overview: next
+                  }
+                : session
+            );
+          }
+          return [
+            ...current,
+            {
+              id,
+              overview: next,
+              messages: [],
+              question: SUGGESTED_QUESTIONS[0],
+              summary: ""
+            }
+          ];
+        });
+        setActiveRoot(id);
       } finally {
         if (unlisten) {
           unlisten();
@@ -129,31 +176,59 @@ export default function App() {
     });
   }
 
-  async function sendQuestion(text: string) {
-    if (!overview || !text.trim()) {
+  function closeSession(rootId: string, event?: React.MouseEvent) {
+    event?.stopPropagation();
+    const index = sessions.findIndex((session) => session.id === rootId);
+    if (index < 0) {
       return;
     }
+    const nextSessions = sessions.filter((session) => session.id !== rootId);
+    setSessions(nextSessions);
+    if (activeRoot === rootId) {
+      const fallback = nextSessions[index] ?? nextSessions[index - 1] ?? null;
+      setActiveRoot(fallback?.id ?? null);
+    }
+  }
+
+  async function sendQuestion(text: string) {
+    if (!active || !text.trim()) {
+      return;
+    }
+    const root = active.overview.root;
+    const projectId = active.overview.project_id;
+    const activeId = active.id;
     await withBusy("正在检索代码并生成回答…", async () => {
       const userMessage: ChatMessage = {
         id: createId(),
         role: "user",
         text: text.trim()
       };
-      setMessages((current) => [...current, userMessage]);
-      const response: AskResponse = await askProject(
-        overview.root,
-        overview.project_id,
-        text.trim()
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === activeId
+            ? { ...session, messages: [...session.messages, userMessage] }
+            : session
+        )
       );
-      setMessages((current) => [
-        ...current,
-        {
-          id: createId(),
-          role: "assistant",
-          text: response.answer,
-          citations: response.citations
-        }
-      ]);
+      const response: AskResponse = await askProject(root, projectId, text.trim());
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === activeId
+            ? {
+                ...session,
+                messages: [
+                  ...session.messages,
+                  {
+                    id: createId(),
+                    role: "assistant",
+                    text: response.answer,
+                    citations: response.citations
+                  }
+                ]
+              }
+            : session
+        )
+      );
     });
   }
 
@@ -166,7 +241,7 @@ export default function App() {
         </div>
         <div className="topbar-actions">
           <button disabled={busy} onClick={() => void openProject()}>
-            {overview ? "打开其他项目" : "打开项目"}
+            {sessions.length > 0 ? "打开其他项目" : "打开项目"}
           </button>
           <button
             className="secondary"
@@ -259,11 +334,11 @@ export default function App() {
       {error ? <div className="banner error">{error}</div> : null}
       {status ? <div className="banner">{status}</div> : null}
 
-      {!overview ? (
+      {sessions.length === 0 ? (
         <section className="welcome">
           <h1>像普通软件一样摸清陌生 C++ 仓库</h1>
           <p>
-            点「打开项目」，选择源码目录。应用会自动扫描、生成总览，并支持中文提问。
+            点「打开项目」，选择源码目录。应用会自动扫描、生成总览，并支持中文提问。可同时打开多个项目，从左侧切换。
           </p>
           <ol>
             <li>打开客户或同事给你的工程目录</li>
@@ -275,163 +350,220 @@ export default function App() {
           </button>
         </section>
       ) : (
-        <div className="workspace">
-          <div className="workspace-scroll">
-            <section className="project-bar">
-              <div>
-                <div className="label">当前项目</div>
-                <div className="path">{overview.root}</div>
-              </div>
-              <div className="stats">
-                <span>{overview.file_count} 个文件</span>
-                <span>{overview.stats.lines.code} 行代码</span>
-                <span>{overview.symbol_count} 个符号</span>
-                <span>{overview.mode || "heuristic"}</span>
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() =>
-                    void withBusy("正在生成客户摘要…", async () => {
-                      const text = await exportClientSummary(overview.root, overview.project_id);
-                      setSummary(text);
-                    })
-                  }
-                >
-                  导出客户摘要
-                </button>
-              </div>
-            </section>
-
-            <section className="panel-grid">
-              <article className="panel">
-                <h2>入口候选</h2>
-                {entries.length === 0 ? (
-                  <p className="muted">未发现常见入口符号，可直接提问排查。</p>
-                ) : (
-                  <ul className="file-list">
-                    {entries.map((entry) => {
-                      const display = splitDisplayPath(entry.file);
-                      return (
-                        <li
-                          key={`${entry.file}:${entry.line}:${entry.name}`}
-                          className="file-row"
-                          title={`${entry.file}:${entry.line}`}
-                        >
-                          <div className="file-main">
-                            <span className="file-name">{entry.name}</span>
-                            <span className="file-dir">
-                              {display.name}:{entry.line}
-                            </span>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </article>
-
-              <article className="panel">
-                <h2>模块地图</h2>
-                <ul className="file-list">
-                  {modules.map(([path, count]) => (
-                    <li key={path} className="file-row" title={path}>
-                      <div className="file-main">
-                        <span className="file-name">{path}</span>
-                      </div>
-                      <span className="file-meta">{count} 文件</span>
-                    </li>
-                  ))}
-                </ul>
-              </article>
-
-              <article className="panel">
-                <h2>热点文件</h2>
-                <ul className="file-list">
-                  {overview.hotspots.map((item) => {
-                    const display = splitDisplayPath(item.path);
-                    return (
-                      <li key={item.path} className="file-row" title={item.path}>
-                        <div className="file-main">
-                          <span className="file-name">{display.name}</span>
-                          <span className="file-dir">{display.dir}</span>
-                        </div>
-                        <span className="file-meta">{item.code_lines} 行</span>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </article>
-            </section>
-
-            <section className="panel messages-panel">
-              <h2>对话</h2>
-              <div className="messages">
-                {messages.length === 0 ? (
-                  <p className="muted">还没有对话。可点下方推荐问题，或直接输入。</p>
-                ) : (
-                  messages.map((message) => (
-                    <div key={message.id} className={`message ${message.role}`}>
-                      <div className="role">{message.role === "user" ? "你" : "CppInsight"}</div>
-                      <p>{message.text}</p>
-                      {message.citations?.length ? (
-                        <ul>
-                          {message.citations.map((citation) => (
-                            <li key={`${message.id}-${citation.title}`}>
-                              <code>{citation.title}</code>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : null}
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-
-            {summary ? (
-              <section className="panel">
-                <h2>客户摘要</h2>
-                <pre>{summary}</pre>
-              </section>
-            ) : null}
-          </div>
-
-          <footer className="composer">
-            <div className="chip-row">
-              {SUGGESTED_QUESTIONS.map((item) => (
-                <button
-                  key={item}
-                  className="chip"
-                  disabled={busy}
-                  onClick={() => {
-                    setQuestion(item);
-                    void sendQuestion(item);
-                  }}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            <div className="ask-box">
-              <textarea
-                value={question}
-                onChange={(event) => setQuestion(event.target.value)}
-                rows={2}
-                placeholder="问这个项目任何问题…"
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey) {
-                    event.preventDefault();
-                    if (!busy && question.trim()) {
-                      void sendQuestion(question);
-                    }
-                  }
-                }}
-              />
-              <button disabled={busy || !question.trim()} onClick={() => void sendQuestion(question)}>
-                发送
+        <div className="app-layout">
+          <aside className="project-rail">
+            <div className="rail-header">
+              <span>项目</span>
+              <button
+                className="rail-add"
+                disabled={busy}
+                title="打开其他项目"
+                onClick={() => void openProject()}
+              >
+                +
               </button>
             </div>
-          </footer>
+            <ul className="rail-list">
+              {sessions.map((session) => {
+                const display = splitDisplayPath(session.overview.root);
+                const selected = session.id === activeRoot;
+                return (
+                  <li key={session.id}>
+                    <button
+                      type="button"
+                      className={`rail-item${selected ? " active" : ""}`}
+                      title={session.overview.root}
+                      disabled={busy}
+                      onClick={() => setActiveRoot(session.id)}
+                    >
+                      <span className="rail-name">{display.name}</span>
+                      <span className="rail-meta">{session.overview.file_count} 文件</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="rail-close"
+                      title="关闭项目"
+                      disabled={busy}
+                      onClick={(event) => closeSession(session.id, event)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </aside>
+
+          {overview && active ? (
+            <div className="workspace">
+              <div className="workspace-scroll">
+                <section className="project-bar">
+                  <div>
+                    <div className="label">当前项目</div>
+                    <div className="path">{overview.root}</div>
+                  </div>
+                  <div className="stats">
+                    <span>{overview.file_count} 个文件</span>
+                    <span>{overview.stats.lines.code} 行代码</span>
+                    <span>{overview.symbol_count} 个符号</span>
+                    <span>{overview.mode || "heuristic"}</span>
+                    <button
+                      className="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        void withBusy("正在生成客户摘要…", async () => {
+                          const text = await exportClientSummary(
+                            overview.root,
+                            overview.project_id
+                          );
+                          updateActiveSession({ summary: text });
+                        })
+                      }
+                    >
+                      导出客户摘要
+                    </button>
+                  </div>
+                </section>
+
+                <section className="panel-grid">
+                  <article className="panel">
+                    <h2>入口候选</h2>
+                    {entries.length === 0 ? (
+                      <p className="muted">未发现常见入口符号，可直接提问排查。</p>
+                    ) : (
+                      <ul className="file-list">
+                        {entries.map((entry) => {
+                          const display = splitDisplayPath(entry.file);
+                          return (
+                            <li
+                              key={`${entry.file}:${entry.line}:${entry.name}`}
+                              className="file-row"
+                              title={`${entry.file}:${entry.line}`}
+                            >
+                              <div className="file-main">
+                                <span className="file-name">{entry.name}</span>
+                                <span className="file-dir">
+                                  {display.name}:{entry.line}
+                                </span>
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </article>
+
+                  <article className="panel">
+                    <h2>模块地图</h2>
+                    <ul className="file-list">
+                      {modules.map(([path, count]) => (
+                        <li key={path} className="file-row" title={path}>
+                          <div className="file-main">
+                            <span className="file-name">{path}</span>
+                          </div>
+                          <span className="file-meta">{count} 文件</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </article>
+
+                  <article className="panel">
+                    <h2>热点文件</h2>
+                    <ul className="file-list">
+                      {overview.hotspots.map((item) => {
+                        const display = splitDisplayPath(item.path);
+                        return (
+                          <li key={item.path} className="file-row" title={item.path}>
+                            <div className="file-main">
+                              <span className="file-name">{display.name}</span>
+                              <span className="file-dir">{display.dir}</span>
+                            </div>
+                            <span className="file-meta">{item.code_lines} 行</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </article>
+                </section>
+
+                <section className="panel messages-panel">
+                  <h2>对话</h2>
+                  <div className="messages">
+                    {active.messages.length === 0 ? (
+                      <p className="muted">还没有对话。可点下方推荐问题，或直接输入。</p>
+                    ) : (
+                      active.messages.map((message) => (
+                        <div key={message.id} className={`message ${message.role}`}>
+                          <div className="role">
+                            {message.role === "user" ? "你" : "CppInsight"}
+                          </div>
+                          <p>{message.text}</p>
+                          {message.citations?.length ? (
+                            <ul>
+                              {message.citations.map((citation) => (
+                                <li key={`${message.id}-${citation.title}`}>
+                                  <code>{citation.title}</code>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                {active.summary ? (
+                  <section className="panel">
+                    <h2>客户摘要</h2>
+                    <pre>{active.summary}</pre>
+                  </section>
+                ) : null}
+              </div>
+
+              <footer className="composer">
+                <div className="chip-row">
+                  {SUGGESTED_QUESTIONS.map((item) => (
+                    <button
+                      key={item}
+                      className="chip"
+                      disabled={busy}
+                      onClick={() => {
+                        updateActiveSession({ question: item });
+                        void sendQuestion(item);
+                      }}
+                    >
+                      {item}
+                    </button>
+                  ))}
+                </div>
+                <div className="ask-box">
+                  <textarea
+                    value={active.question}
+                    onChange={(event) =>
+                      updateActiveSession({ question: event.target.value })
+                    }
+                    rows={2}
+                    placeholder="问这个项目任何问题…"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.shiftKey) {
+                        event.preventDefault();
+                        if (!busy && active.question.trim()) {
+                          void sendQuestion(active.question);
+                        }
+                      }
+                    }}
+                  />
+                  <button
+                    disabled={busy || !active.question.trim()}
+                    onClick={() => void sendQuestion(active.question)}
+                  >
+                    发送
+                  </button>
+                </div>
+              </footer>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

@@ -35,7 +35,7 @@ textarea {
 }
 
 .app-shell {
-  max-width: 1180px;
+  max-width: 1280px;
   margin: 0 auto;
   padding: 16px 24px 0;
   height: 100%;
@@ -45,12 +45,121 @@ textarea {
   box-sizing: border-box;
 }
 
+.app-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  margin-bottom: 0;
+}
+
+.project-rail {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: rgba(24, 34, 45, 0.94);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.rail-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  color: var(--muted);
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+
+.rail-add {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  box-shadow: none;
+  line-height: 1;
+  font-size: 18px;
+}
+
+.rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+  display: grid;
+  gap: 6px;
+}
+
+.rail-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 28px;
+  gap: 4px;
+  align-items: stretch;
+}
+
+.rail-item {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+  padding: 10px 10px;
+  border-radius: 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--text);
+  min-width: 0;
+}
+
+.rail-item:hover {
+  background: rgba(61, 156, 240, 0.08);
+  border-color: rgba(61, 156, 240, 0.2);
+}
+
+.rail-item.active {
+  background: rgba(61, 156, 240, 0.16);
+  border-color: rgba(61, 156, 240, 0.35);
+}
+
+.rail-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.rail-meta {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rail-close {
+  padding: 0;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 18px;
+  line-height: 1;
+}
+
+.rail-close:hover {
+  color: var(--danger);
+  border-color: rgba(255, 142, 142, 0.35);
+  background: rgba(255, 142, 142, 0.08);
+}
+
 .topbar {
+  flex: 0 0 auto;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .brand {
@@ -79,10 +188,6 @@ textarea {
   gap: 10px;
   align-items: center;
   flex-wrap: wrap;
-}
-
-.topbar {
-  flex: 0 0 auto;
 }
 
 button {
@@ -374,6 +479,14 @@ pre {
 }
 
 @media (max-width: 960px) {
+  .app-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .project-rail {
+    max-height: 180px;
+  }
+
   .topbar,
   .project-bar,
   .panel-grid,
