@@ -1717,25 +1717,35 @@ async fn call_openai(
     let response = reqwest::Client::new()
         .post(&endpoint)
         .bearer_auth(&settings.api_key)
+        .header("Accept", "application/json")
         .json(&body)
         .send()
         .await
-        .map_err(|error| format!("OpenAI request failed: {error}"))?;
+        .map_err(|error| format!("OpenAI request failed ({endpoint}): {error}"))?;
 
     let status = response.status();
-    let value: serde_json::Value = response
-        .json()
+    let raw = response
+        .text()
         .await
-        .map_err(|error| format!("failed to parse OpenAI response: {error}"))?;
+        .map_err(|error| format!("failed to read OpenAI response body ({endpoint}): {error}"))?;
+
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
+        let preview: String = raw.chars().take(240).collect();
+        format!(
+            "failed to parse OpenAI response as JSON ({endpoint}, status {status}): {error}. body preview: {preview}"
+        )
+    })?;
 
     if !status.is_success() {
-        return Err(format!("OpenAI request failed with {status}: {value}"));
+        return Err(format!("OpenAI request failed with {status} ({endpoint}): {value}"));
     }
 
     value["choices"][0]["message"]["content"]
         .as_str()
         .map(|content| content.to_string())
-        .ok_or_else(|| format!("OpenAI response did not include message content: {value}"))
+        .ok_or_else(|| {
+            format!("OpenAI response did not include message content ({endpoint}): {value}")
+        })
 }
 
 pub(crate) fn sql_error(error: rusqlite::Error) -> String {
