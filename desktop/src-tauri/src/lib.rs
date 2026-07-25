@@ -1682,6 +1682,70 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     Ok(output)
 }
 
+fn looks_like_sse(raw: &str) -> bool {
+    raw.lines()
+        .any(|line| line.trim_start().starts_with("data:"))
+}
+
+fn extract_message_content(value: &serde_json::Value) -> Option<String> {
+    value["choices"][0]["message"]["content"]
+        .as_str()
+        .map(|content| content.to_string())
+        .filter(|content| !content.is_empty())
+}
+
+/// Parse OpenAI chat.completion JSON or SSE (`data: {...}`) streams into assistant text.
+pub fn parse_chat_completion_body(raw: &str) -> Result<String, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err("empty response body".to_string());
+    }
+
+    if !looks_like_sse(trimmed) {
+        let value: serde_json::Value = serde_json::from_str(trimmed)
+            .map_err(|error| format!("invalid JSON response: {error}"))?;
+        return extract_message_content(&value).ok_or_else(|| {
+            format!("OpenAI response did not include message content: {value}")
+        });
+    }
+
+    let mut content = String::new();
+    let mut reasoning = String::new();
+    for line in trimmed.lines() {
+        let line = line.trim();
+        let Some(payload) = line.strip_prefix("data:") else {
+            continue;
+        };
+        let payload = payload.trim();
+        if payload.is_empty() || payload == "[DONE]" {
+            continue;
+        }
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+            continue;
+        };
+        if let Some(piece) = value["choices"][0]["delta"]["content"].as_str() {
+            content.push_str(piece);
+        }
+        if let Some(piece) = value["choices"][0]["delta"]["reasoning_content"].as_str() {
+            reasoning.push_str(piece);
+        }
+        if let Some(piece) = value["choices"][0]["message"]["content"].as_str() {
+            if !piece.is_empty() {
+                content = piece.to_string();
+            }
+        }
+    }
+
+    if !content.trim().is_empty() {
+        return Ok(content);
+    }
+    if !reasoning.trim().is_empty() {
+        // Some gateways stream only reasoning_content for a while; surface it rather than failing.
+        return Ok(reasoning);
+    }
+    Err("SSE response did not include assistant content".to_string())
+}
+
 async fn call_openai(
     settings: &OpenAiSettings,
     question: &str,
@@ -1701,6 +1765,7 @@ async fn call_openai(
     let body = json!({
         "model": settings.model,
         "temperature": 0.2,
+        "stream": false,
         "messages": [
             {
                 "role": "system",
@@ -1729,23 +1794,17 @@ async fn call_openai(
         .await
         .map_err(|error| format!("failed to read OpenAI response body ({endpoint}): {error}"))?;
 
-    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|error| {
-        let preview: String = raw.chars().take(240).collect();
-        format!(
-            "failed to parse OpenAI response as JSON ({endpoint}, status {status}): {error}. body preview: {preview}"
-        )
-    })?;
-
     if !status.is_success() {
-        return Err(format!("OpenAI request failed with {status} ({endpoint}): {value}"));
+        let preview: String = raw.chars().take(240).collect();
+        return Err(format!(
+            "OpenAI request failed with {status} ({endpoint}). body preview: {preview}"
+        ));
     }
 
-    value["choices"][0]["message"]["content"]
-        .as_str()
-        .map(|content| content.to_string())
-        .ok_or_else(|| {
-            format!("OpenAI response did not include message content ({endpoint}): {value}")
-        })
+    parse_chat_completion_body(&raw).map_err(|error| {
+        let preview: String = raw.chars().take(240).collect();
+        format!("{error} ({endpoint}). body preview: {preview}")
+    })
 }
 
 pub(crate) fn sql_error(error: rusqlite::Error) -> String {
@@ -1830,6 +1889,32 @@ mod tests {
         assert_eq!(
             super::chat_completions_url("https://proxy.example.com/v1/chat/completions"),
             "https://proxy.example.com/v1/chat/completions"
+        );
+    }
+
+    #[test]
+    fn parses_non_streaming_chat_completion() {
+        let raw = r#"{"choices":[{"message":{"role":"assistant","content":"入口在 main"}}]}"#;
+        assert_eq!(
+            super::parse_chat_completion_body(raw).unwrap(),
+            "入口在 main"
+        );
+    }
+
+    #[test]
+    fn parses_sse_chat_completion_chunks() {
+        let raw = r#"
+data: {"choices":[{"delta":{"role":"assistant","content":""}}]}
+
+data: {"choices":[{"delta":{"content":"入口"}}]}
+
+data: {"choices":[{"delta":{"content":"在 main"}}]}
+
+data: [DONE]
+"#;
+        assert_eq!(
+            super::parse_chat_completion_body(raw).unwrap(),
+            "入口在 main"
         );
     }
 }
