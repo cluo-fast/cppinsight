@@ -4,7 +4,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -2211,12 +2211,67 @@ fn enclosing_definition(
         .map_err(sql_error)
 }
 
-fn load_call_edges(connection: &Connection, project_id: i64) -> Result<Vec<CallEdge>, String> {
+fn load_definition_lines_for_file(
+    connection: &Connection,
+    project_id: i64,
+    file: &str,
+) -> Result<Vec<(u64, SymbolHit)>, String> {
     let mut statement = connection
-        .prepare("SELECT file, line, name FROM calls WHERE project_id = ?1")
+        .prepare(
+            "SELECT file, line, kind, name, signature, is_definition, confidence
+             FROM symbols
+             WHERE project_id = ?1 AND file = ?2 AND is_definition = 1
+             ORDER BY line ASC",
+        )
         .map_err(sql_error)?;
     let rows = statement
-        .query_map(params![project_id], |row| {
+        .query_map(params![project_id, file], |row| {
+            Ok(symbol_hit_from_row(
+                row.get(0)?,
+                row.get::<_, i64>(1)? as u64,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get::<_, i64>(5)? != 0,
+                row.get(6)?,
+            ))
+        })
+        .map_err(sql_error)?;
+    let mut items = Vec::new();
+    for row in rows {
+        let hit = row.map_err(sql_error)?;
+        items.push((hit.line, hit));
+    }
+    Ok(items)
+}
+
+fn enclosing_from_defs(defs: &[(u64, SymbolHit)], line: u64) -> Option<&SymbolHit> {
+    let mut best: Option<&SymbolHit> = None;
+    for (def_line, hit) in defs {
+        if *def_line <= line {
+            best = Some(hit);
+        } else {
+            break;
+        }
+    }
+    best
+}
+
+/// Incoming edges: who calls `callee` (query by call site name — O(matches), not whole project).
+fn load_edges_to_callee(
+    connection: &Connection,
+    project_id: i64,
+    callee: &str,
+) -> Result<Vec<CallEdge>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT file, line, name FROM calls
+             WHERE project_id = ?1 AND lower(name) = lower(?2)
+             LIMIT 200",
+        )
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map(params![project_id, callee], |row| {
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, i64>(1)? as u64,
@@ -2225,34 +2280,101 @@ fn load_call_edges(connection: &Connection, project_id: i64) -> Result<Vec<CallE
         })
         .map_err(sql_error)?;
 
-    let mut edges = Vec::new();
+    let mut by_file: BTreeMap<String, Vec<(u64, String)>> = BTreeMap::new();
     for row in rows {
-        let (via_file, via_line, callee) = row.map_err(sql_error)?;
-        let Some(caller) = enclosing_definition(connection, project_id, &via_file, via_line)? else {
-            continue;
-        };
-        if caller.name.eq_ignore_ascii_case(&callee) {
-            continue;
+        let (via_file, via_line, callee_name) = row.map_err(sql_error)?;
+        by_file
+            .entry(via_file)
+            .or_default()
+            .push((via_line, callee_name));
+    }
+
+    let mut edges = Vec::new();
+    for (via_file, calls) in by_file {
+        let defs = load_definition_lines_for_file(connection, project_id, &via_file)?;
+        for (via_line, callee_name) in calls {
+            let Some(caller) = enclosing_from_defs(&defs, via_line) else {
+                continue;
+            };
+            if caller.name.eq_ignore_ascii_case(&callee_name) {
+                continue;
+            }
+            edges.push(CallEdge {
+                caller: caller.name.clone(),
+                caller_file: caller.file.clone(),
+                caller_line: caller.line,
+                callee: callee_name,
+                via_file: via_file.clone(),
+                via_line,
+            });
         }
-        edges.push(CallEdge {
-            caller: caller.name,
-            caller_file: caller.file,
-            caller_line: caller.line,
-            callee,
-            via_file,
-            via_line,
-        });
+    }
+    Ok(edges)
+}
+
+/// Outgoing edges: calls made from `caller` (scan call sites in its definition files only).
+fn load_edges_from_caller(
+    connection: &Connection,
+    project_id: i64,
+    caller: &str,
+) -> Result<Vec<CallEdge>, String> {
+    let definitions = load_definitions_for_name(connection, project_id, caller)?;
+    let mut files = HashSet::new();
+    for definition in &definitions {
+        if definition.is_definition {
+            files.insert(definition.file.clone());
+        }
+    }
+    if files.is_empty() {
+        for definition in &definitions {
+            files.insert(definition.file.clone());
+        }
+    }
+
+    let mut edges = Vec::new();
+    let mut statement = connection
+        .prepare("SELECT line, name FROM calls WHERE project_id = ?1 AND file = ?2 LIMIT 2000")
+        .map_err(sql_error)?;
+
+    for file in files {
+        let defs = load_definition_lines_for_file(connection, project_id, &file)?;
+        let rows = statement
+            .query_map(params![project_id, file], |row| {
+                Ok((row.get::<_, i64>(0)? as u64, row.get::<_, String>(1)?))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (via_line, callee) = row.map_err(sql_error)?;
+            let Some(enclosing) = enclosing_from_defs(&defs, via_line) else {
+                continue;
+            };
+            if !enclosing.name.eq_ignore_ascii_case(caller) {
+                continue;
+            }
+            if enclosing.name.eq_ignore_ascii_case(&callee) {
+                continue;
+            }
+            edges.push(CallEdge {
+                caller: enclosing.name.clone(),
+                caller_file: enclosing.file.clone(),
+                caller_line: enclosing.line,
+                callee,
+                via_file: file.clone(),
+                via_line,
+            });
+        }
     }
     Ok(edges)
 }
 
 fn collect_impact_neighbors(
-    edges: &[CallEdge],
+    connection: &Connection,
+    project_id: i64,
     symbol: &str,
     want_callers: bool,
     depth: u32,
     cap: usize,
-) -> Vec<ImpactNeighbor> {
+) -> Result<Vec<ImpactNeighbor>, String> {
     let mut results = Vec::new();
     let mut seen_names = HashSet::new();
     let mut frontier: HashSet<String> = HashSet::new();
@@ -2261,21 +2383,19 @@ fn collect_impact_neighbors(
     for _ in 0..depth {
         let mut next_frontier = HashSet::new();
         for current in &frontier {
+            let edges = if want_callers {
+                load_edges_to_callee(connection, project_id, current)?
+            } else {
+                load_edges_from_caller(connection, project_id, current)?
+            };
             for edge in edges {
                 let (neighbor_name, neighbor_file, neighbor_line) = if want_callers {
-                    if !edge.callee.eq_ignore_ascii_case(current) {
-                        continue;
-                    }
                     (
                         edge.caller.clone(),
                         edge.caller_file.clone(),
                         edge.caller_line,
                     )
                 } else {
-                    if !edge.caller.eq_ignore_ascii_case(current) {
-                        continue;
-                    }
-                    // Prefer definition location of callee when available later; use via for now.
                     (edge.callee.clone(), edge.via_file.clone(), edge.via_line)
                 };
 
@@ -2292,7 +2412,7 @@ fn collect_impact_neighbors(
                     via_line: edge.via_line,
                 });
                 if results.len() >= cap {
-                    return results;
+                    return Ok(results);
                 }
             }
         }
@@ -2302,31 +2422,23 @@ fn collect_impact_neighbors(
         frontier = next_frontier;
     }
 
-    results
+    Ok(results)
 }
 
 fn find_entry_paths(
     connection: &Connection,
     project_id: i64,
-    edges: &[CallEdge],
     target: &str,
     max_paths: usize,
     max_depth: usize,
 ) -> Result<Vec<EntryPath>, String> {
-    // Reverse adjacency: callee_lower -> list of caller edges
-    let mut reverse: HashMap<String, Vec<&CallEdge>> = HashMap::new();
-    for edge in edges {
-        reverse
-            .entry(edge.callee.to_lowercase())
-            .or_default()
-            .push(edge);
-    }
-
     let mut queue = VecDeque::new();
     queue.push_back((target.to_string(), vec![target.to_string()]));
     let mut visited = HashSet::new();
     visited.insert(target.to_lowercase());
     let mut paths = Vec::new();
+    let mut expansions = 0_usize;
+    const MAX_EXPANSIONS: usize = 64;
 
     while let Some((current, chain)) = queue.pop_front() {
         if paths.len() >= max_paths {
@@ -2359,9 +2471,12 @@ fn find_entry_paths(
             continue;
         }
 
-        let Some(parents) = reverse.get(&current.to_lowercase()) else {
-            continue;
-        };
+        if expansions >= MAX_EXPANSIONS {
+            break;
+        }
+        expansions += 1;
+
+        let parents = load_edges_to_callee(connection, project_id, &current)?;
         for edge in parents {
             let key = edge.caller.to_lowercase();
             if !visited.insert(key) {
@@ -2432,16 +2547,17 @@ pub fn inspect_symbol_at(
     };
 
     let definitions = load_definitions_for_name(connection, project_id, &target_name)?;
-    let edges = load_call_edges(connection, project_id)?;
-    let callers = collect_impact_neighbors(&edges, &target_name, true, depth, 40);
-    let mut callees = collect_impact_neighbors(&edges, &target_name, false, depth, 40);
+    let callers =
+        collect_impact_neighbors(connection, project_id, &target_name, true, depth, 40)?;
+    let mut callees =
+        collect_impact_neighbors(connection, project_id, &target_name, false, depth, 40)?;
     for callee in &mut callees {
         if let Some(hit) = best_hit_for_name(connection, project_id, &callee.name)? {
             callee.file = hit.file;
             callee.line = hit.line;
         }
     }
-    let entry_paths = find_entry_paths(connection, project_id, &edges, &target_name, 3, 10)?;
+    let entry_paths = find_entry_paths(connection, project_id, &target_name, 3, 10)?;
 
     let message = format!(
         "符号 `{target_name}`：{} 个定义，{} 个上游，{} 个下游，{} 条入口路径。",
