@@ -1,0 +1,13 @@
+/build/
+/build-codex/
+/.cppinsight/
+**/.cppinsight/
+/desktop/node_modules/
+/desktop/dist/
+/desktop/src-tauri/target/
+/desktop/src-tauri/gen/
+/desktop/src-tauri/resources/cppinsight.exe
+/desktop/src-tauri/resources/*.exe
+*.sqlite
+.DS_Store
+CMakeUserPresets.json

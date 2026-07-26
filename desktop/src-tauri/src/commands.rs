@@ -1,9 +1,9 @@
 use crate::{
     ask_project_at_with_settings, build_client_summary, emit_index_progress, index_db_path_for_root,
-    index_scan_json_at, load_project_overview, migrate_legacy_project_if_needed, open_database_at,
-    overview_from_scan, read_openai_settings, run_scan, run_scan_with_progress, set_api_key_at,
-    set_openai_settings_at, settings_db_path_from_app, write_index, AskResponse, IndexProgressEvent,
-    OpenAiSettings, ProjectOverview, ScanResult,
+    index_scan_json_at, inspect_symbol_at, load_project_overview, migrate_legacy_project_if_needed,
+    open_database_at, overview_from_scan, read_openai_settings, run_scan, run_scan_with_progress,
+    set_api_key_at, set_openai_settings_at, settings_db_path_from_app, write_index, AskResponse,
+    IndexProgressEvent, InspectSymbolResponse, OpenAiSettings, ProjectOverview, ScanResult,
 };
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -121,12 +121,33 @@ pub async fn ask_project(
 }
 
 #[tauri::command]
-pub fn export_client_summary(
+pub async fn export_client_summary(
     app: tauri::AppHandle,
     root: String,
     project_id: i64,
 ) -> Result<String, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
-    let connection = open_database_at(&db_path)?;
-    build_client_summary(&connection, project_id)
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        build_client_summary(&connection, project_id)
+    })
+    .await
+    .map_err(|error| format!("export summary join error: {error}"))?
+}
+
+#[tauri::command]
+pub async fn inspect_symbol(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+    query: String,
+    depth: Option<u32>,
+) -> Result<InspectSymbolResponse, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        inspect_symbol_at(&connection, project_id, &query, depth)
+    })
+    .await
+    .map_err(|error| format!("inspect task join error: {error}"))?
 }

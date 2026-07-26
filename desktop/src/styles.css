@@ -49,7 +49,7 @@ textarea {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
   gap: 14px;
   margin-bottom: 0;
 }
@@ -94,11 +94,86 @@ textarea {
   gap: 6px;
 }
 
-.rail-list li {
+.rail-list > .rail-project {
+  display: grid;
+  gap: 4px;
+}
+
+.rail-project-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 28px;
   gap: 4px;
   align-items: stretch;
+}
+
+.chat-list {
+  list-style: none;
+  margin: 0 0 4px;
+  padding: 0 0 0 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.chat-list-actions {
+  display: block;
+}
+
+.chat-new {
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px dashed rgba(116, 192, 252, 0.35);
+  background: transparent;
+  color: var(--accent-2);
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.chat-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  gap: 2px;
+  align-items: stretch;
+}
+
+.chat-item {
+  text-align: left;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-size: 12px;
+  min-width: 0;
+}
+
+.chat-item:hover {
+  background: rgba(61, 156, 240, 0.08);
+  color: var(--text);
+}
+
+.chat-item.active {
+  background: rgba(61, 156, 240, 0.14);
+  border-color: rgba(116, 192, 252, 0.3);
+  color: var(--text);
+}
+
+.chat-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-close {
+  font-size: 16px;
+}
+
+.running-hint {
+  margin-top: 4px;
+  font-size: 12px;
 }
 
 .rail-item {
@@ -370,6 +445,97 @@ button:disabled {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: rgba(16, 22, 29, 0.55);
+}
+
+.file-row-button {
+  width: 100%;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+
+.file-row-button:hover:not(:disabled) {
+  border-color: rgba(116, 192, 252, 0.45);
+  background: rgba(61, 156, 240, 0.12);
+}
+
+.file-row-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.composer-modes {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.mode-chip {
+  border: 1px solid var(--line);
+  background: rgba(16, 22, 29, 0.65);
+  color: var(--muted);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.mode-chip.active {
+  color: var(--text);
+  border-color: rgba(116, 192, 252, 0.5);
+  background: rgba(61, 156, 240, 0.16);
+}
+
+.composer-hint {
+  margin: 0 0 10px;
+  font-size: 13px;
+}
+
+.inspect-card {
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(16, 22, 29, 0.55);
+  display: grid;
+  gap: 12px;
+}
+
+.inspect-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--accent-2);
+  font-weight: 600;
+}
+
+.inspect-section ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+}
+
+.inspect-section li {
+  line-height: 1.45;
+}
+
+.linkish {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent-2);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.linkish:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.inspect-explain {
+  justify-self: start;
 }
 
 .file-main {

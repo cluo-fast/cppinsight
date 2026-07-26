@@ -19,6 +19,8 @@ struct IncludeInfo {
     std::uint64_t line = 0;
     std::string target;
     std::string kind;
+    std::string resolvedPath;
+    bool resolved = false;
 };
 
 struct SymbolInfo {
@@ -29,12 +31,14 @@ struct SymbolInfo {
     std::string signature;
     std::string scope;
     bool isDefinition = false;
+    std::string confidence = "heuristic";
 };
 
 struct CallInfo {
     std::filesystem::path filePath;
     std::uint64_t line = 0;
     std::string name;
+    std::string confidence = "heuristic";
 };
 
 struct FileInfo {
@@ -43,6 +47,9 @@ struct FileInfo {
     std::string extension;
     std::string category;
     std::uintmax_t sizeBytes = 0;
+    std::uint64_t mtimeUnix = 0;
+    bool fromCompileCommands = false;
+    bool reusedFromCache = false;
     LineMetrics lines;
     std::vector<IncludeInfo> includes;
     std::vector<SymbolInfo> symbols;

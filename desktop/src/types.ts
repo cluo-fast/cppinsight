@@ -109,11 +109,54 @@ export interface AskResponse {
   citations: Citation[];
 }
 
+export interface SymbolHit {
+  name: string;
+  file: string;
+  line: number;
+  kind: string;
+  signature: string;
+  is_definition: boolean;
+  confidence: string;
+}
+
+export interface ImpactNeighbor {
+  name: string;
+  file: string;
+  line: number;
+  via_file: string;
+  via_line: number;
+}
+
+export interface EntryPath {
+  entry: string;
+  hops: SymbolHit[];
+}
+
+export interface ImpactReport {
+  symbol: string;
+  definitions: SymbolHit[];
+  callers: ImpactNeighbor[];
+  callees: ImpactNeighbor[];
+  entry_paths: EntryPath[];
+  confidence: string;
+}
+
+export interface InspectSymbolResponse {
+  query: string;
+  message: string;
+  candidates: SymbolHit[];
+  report: ImpactReport | null;
+}
+
+export type ComposerMode = "ask" | "symbol";
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   text: string;
   citations?: Citation[];
+  kind?: "text" | "symbol-inspect";
+  inspect?: InspectSymbolResponse;
 }
 
 export interface IndexProgressEvent {

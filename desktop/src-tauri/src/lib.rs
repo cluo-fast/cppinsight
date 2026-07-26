@@ -4,7 +4,7 @@ use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
@@ -165,6 +165,50 @@ pub struct AskResponse {
     pub citations: Vec<Citation>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolHit {
+    pub name: String,
+    pub file: String,
+    pub line: u64,
+    pub kind: String,
+    pub signature: String,
+    pub is_definition: bool,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactNeighbor {
+    pub name: String,
+    pub file: String,
+    pub line: u64,
+    pub via_file: String,
+    pub via_line: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntryPath {
+    pub entry: String,
+    pub hops: Vec<SymbolHit>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImpactReport {
+    pub symbol: String,
+    pub definitions: Vec<SymbolHit>,
+    pub callers: Vec<ImpactNeighbor>,
+    pub callees: Vec<ImpactNeighbor>,
+    pub entry_paths: Vec<EntryPath>,
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InspectSymbolResponse {
+    pub query: String,
+    pub message: String,
+    pub candidates: Vec<SymbolHit>,
+    pub report: Option<ImpactReport>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SearchContext {
     pub file: String,
@@ -174,8 +218,15 @@ pub struct SearchContext {
     pub score: i64,
 }
 
+fn read_text_lossy(path: &Path) -> Result<String, String> {
+    let bytes = fs::read(path).map_err(|error| {
+        format!("failed to read {}: {error}", path.display())
+    })?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
 pub fn index_scan_json_at(scan_json: &str, db_path: &Path) -> Result<ProjectOverview, String> {
-    let json_text = fs::read_to_string(scan_json)
+    let json_text = read_text_lossy(Path::new(scan_json))
         .map_err(|error| format!("failed to read scan JSON {}: {error}", scan_json))?;
     let scan: ScanResult = serde_json::from_str(&json_text)
         .map_err(|error| format!("failed to parse scan JSON: {error}"))?;
@@ -198,17 +249,24 @@ pub async fn ask_project_at_with_settings(
     db_path: &Path,
     settings_db_path: Option<&Path>,
 ) -> Result<AskResponse, String> {
-    let (contexts, ai_settings) = {
-        let connection = open_database_at(db_path)?;
-        let contexts = search_contexts(&connection, project_id, question, 8)?;
-        let ai_settings = if let Some(settings_path) = settings_db_path {
+    let question_owned = question.to_string();
+    let db_path = db_path.to_path_buf();
+    let settings_db_path = settings_db_path.map(|path| path.to_path_buf());
+
+    // Keep SQLite / graph retrieval off the UI/async runtime thread.
+    let (contexts, ai_settings) = tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        let contexts = search_contexts(&connection, project_id, &question_owned, 8)?;
+        let ai_settings = if let Some(settings_path) = settings_db_path.as_ref() {
             let settings = open_database_at(settings_path)?;
             read_openai_settings(&settings)?
         } else {
             read_openai_settings(&connection)?
         };
-        (contexts, ai_settings)
-    };
+        Ok::<_, String>((contexts, ai_settings))
+    })
+    .await
+    .map_err(|error| format!("ask retrieval join error: {error}"))??;
 
     if contexts.is_empty() {
         return Ok(AskResponse {
@@ -748,33 +806,84 @@ pub fn run_scan(path: &str) -> Result<ScanResult, String> {
     run_scan_with_progress(path, |_| {})
 }
 
+fn summarize_cli_stderr(stderr_lines: &[String]) -> String {
+    let mut errors: Vec<&str> = stderr_lines
+        .iter()
+        .map(|line| line.trim())
+        .filter(|line| {
+            !line.is_empty()
+                && (line.starts_with("[ERROR]")
+                    || line.contains("error:")
+                    || line.contains("Error:")
+                    || line.contains("failed")
+                    || line.contains("Failed"))
+        })
+        .collect();
+    if errors.is_empty() {
+        errors = stderr_lines
+            .iter()
+            .rev()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty() && !line.starts_with("[scan]"))
+            .take(5)
+            .collect();
+        errors.reverse();
+    }
+    if errors.is_empty() {
+        return "no stderr details".to_string();
+    }
+    errors
+        .into_iter()
+        .take(6)
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
 pub fn run_scan_with_progress(
     path: &str,
     mut on_progress: impl FnMut(IndexProgressEvent),
 ) -> Result<ScanResult, String> {
     let cli = find_cppinsight_binary()?;
-    let json_path = std::env::temp_dir().join(format!(
-        "cppinsight-scan-{}-{}.json",
-        std::process::id(),
-        Utc::now().timestamp_millis()
-    ));
+    let stamp = format!("{}-{}", std::process::id(), Utc::now().timestamp_millis());
+    let json_path = std::env::temp_dir().join(format!("cppinsight-scan-{stamp}.json"));
+    // Keep overview out of the project tree so a read-only/locked project root
+    // does not fail the desktop index path after a successful scan.
+    let overview_path = std::env::temp_dir().join(format!("cppinsight-overview-{stamp}.md"));
 
     let mut child = Command::new(&cli)
         .arg("scan")
         .arg(path)
         .arg("--json")
         .arg(&json_path)
+        .arg("--overview")
+        .arg(&overview_path)
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|error| format!("failed to run cppinsight CLI: {error}"))?;
+        .map_err(|error| {
+            format!(
+                "failed to run cppinsight CLI ({}): {error}",
+                cli.display()
+            )
+        })?;
 
+    let mut stderr_lines = Vec::new();
     if let Some(stderr) = child.stderr.take() {
-        let reader = BufReader::new(stderr);
-        for line in reader.lines() {
-            let Ok(line) = line else {
+        let mut reader = BufReader::new(stderr);
+        loop {
+            let mut raw = Vec::new();
+            let read = reader
+                .read_until(b'\n', &mut raw)
+                .map_err(|error| format!("failed to read cppinsight stderr: {error}"))?;
+            if read == 0 {
+                break;
+            }
+            let line = String::from_utf8_lossy(&raw)
+                .trim_end_matches(['\r', '\n'])
+                .to_string();
+            if line.is_empty() {
                 continue;
-            };
+            }
             if let Some(parsed) = parse_scan_progress_line(&line) {
                 on_progress(IndexProgressEvent {
                     stage: "scanning".to_string(),
@@ -785,6 +894,7 @@ pub fn run_scan_with_progress(
                     message: None,
                 });
             }
+            stderr_lines.push(line);
         }
     }
 
@@ -794,12 +904,30 @@ pub fn run_scan_with_progress(
 
     if !status.success() {
         let _ = fs::remove_file(&json_path);
-        return Err(format!("cppinsight scan failed with status {status}."));
+        let _ = fs::remove_file(&overview_path);
+        return Err(format!(
+            "cppinsight scan failed with status {status}. cli={} path={} detail={}",
+            cli.display(),
+            path,
+            summarize_cli_stderr(&stderr_lines)
+        ));
     }
 
-    let json_text = fs::read_to_string(&json_path)
-        .map_err(|error| format!("failed to read scan JSON {}: {error}", json_path.display()))?;
+    let json_text = match read_text_lossy(&json_path) {
+        Ok(text) => text,
+        Err(error) => {
+            let _ = fs::remove_file(&json_path);
+            let _ = fs::remove_file(&overview_path);
+            return Err(format!(
+                "failed to read scan JSON {}: {}. detail={}",
+                json_path.display(),
+                error,
+                summarize_cli_stderr(&stderr_lines)
+            ));
+        }
+    };
     let _ = fs::remove_file(&json_path);
+    let _ = fs::remove_file(&overview_path);
 
     serde_json::from_str(&json_text).map_err(|error| format!("failed to parse scan JSON: {error}"))
 }
@@ -1419,10 +1547,26 @@ fn build_chunks(scan: &ScanResult) -> Result<Vec<SearchContext>, String> {
         let mut current = String::new();
         let mut start_line = 1_u64;
         let mut end_line = 0_u64;
+        let mut reader = BufReader::new(input);
+        let mut line_number = 0_u64;
 
-        for (index, line) in BufReader::new(input).lines().enumerate() {
-            let line_number = index as u64 + 1;
-            let line = line.map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        loop {
+            let mut raw = Vec::new();
+            let read = reader
+                .read_until(b'\n', &mut raw)
+                .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+            if read == 0 {
+                break;
+            }
+            if raw.last() == Some(&b'\n') {
+                raw.pop();
+            }
+            if raw.last() == Some(&b'\r') {
+                raw.pop();
+            }
+
+            line_number += 1;
+            let line = String::from_utf8_lossy(&raw);
             if current.is_empty() {
                 start_line = line_number;
             }
@@ -1887,6 +2031,441 @@ fn apply_graph_boosts(contexts: &mut [SearchContext], locations: &[GraphLocation
     }
 }
 
+const ENTRY_SYMBOL_NAMES: &[&str] = &[
+    "main",
+    "wmain",
+    "WinMain",
+    "wWinMain",
+    "DllMain",
+    "_tmain",
+    "_tWinMain",
+];
+
+fn is_entry_symbol_name(name: &str) -> bool {
+    ENTRY_SYMBOL_NAMES
+        .iter()
+        .any(|entry| entry.eq_ignore_ascii_case(name))
+}
+
+fn clamp_inspect_depth(depth: Option<u32>) -> u32 {
+    depth.unwrap_or(2).clamp(1, 4)
+}
+
+#[derive(Debug, Clone)]
+struct CallEdge {
+    caller: String,
+    caller_file: String,
+    caller_line: u64,
+    callee: String,
+    via_file: String,
+    via_line: u64,
+}
+
+fn symbol_hit_from_row(
+    file: String,
+    line: u64,
+    kind: String,
+    name: String,
+    signature: String,
+    is_definition: bool,
+    confidence: String,
+) -> SymbolHit {
+    SymbolHit {
+        name,
+        file,
+        line,
+        kind,
+        signature,
+        is_definition,
+        confidence,
+    }
+}
+
+fn search_symbol_hits(
+    connection: &Connection,
+    project_id: i64,
+    query: &str,
+    limit: usize,
+) -> Result<Vec<SymbolHit>, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() || limit == 0 {
+        return Ok(Vec::new());
+    }
+
+    let mut statement = connection
+        .prepare(
+            "SELECT file, line, kind, name, signature, is_definition, confidence
+             FROM symbols
+             WHERE project_id = ?1
+               AND (
+                    lower(name) = lower(?2)
+                    OR lower(name) LIKE lower(?2) || '%'
+                    OR lower(name) LIKE '%' || lower(?2) || '%'
+               )
+             ORDER BY
+                CASE
+                    WHEN lower(name) = lower(?2) THEN 0
+                    WHEN lower(name) LIKE lower(?2) || '%' THEN 1
+                    ELSE 2
+                END,
+                is_definition DESC,
+                length(name) ASC,
+                file ASC,
+                line ASC
+             LIMIT ?3",
+        )
+        .map_err(sql_error)?;
+
+    let rows = statement
+        .query_map(params![project_id, trimmed, limit as i64], |row| {
+            Ok(symbol_hit_from_row(
+                row.get(0)?,
+                row.get::<_, i64>(1)? as u64,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get::<_, i64>(5)? != 0,
+                row.get(6)?,
+            ))
+        })
+        .map_err(sql_error)?;
+
+    let mut hits = Vec::new();
+    for row in rows {
+        hits.push(row.map_err(sql_error)?);
+    }
+    Ok(hits)
+}
+
+fn load_definitions_for_name(
+    connection: &Connection,
+    project_id: i64,
+    name: &str,
+) -> Result<Vec<SymbolHit>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT file, line, kind, name, signature, is_definition, confidence
+             FROM symbols
+             WHERE project_id = ?1 AND lower(name) = lower(?2)
+             ORDER BY is_definition DESC, file ASC, line ASC
+             LIMIT 20",
+        )
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map(params![project_id, name], |row| {
+            Ok(symbol_hit_from_row(
+                row.get(0)?,
+                row.get::<_, i64>(1)? as u64,
+                row.get(2)?,
+                row.get(3)?,
+                row.get(4)?,
+                row.get::<_, i64>(5)? != 0,
+                row.get(6)?,
+            ))
+        })
+        .map_err(sql_error)?;
+    let mut hits = Vec::new();
+    for row in rows {
+        hits.push(row.map_err(sql_error)?);
+    }
+    Ok(hits)
+}
+
+fn best_hit_for_name(
+    connection: &Connection,
+    project_id: i64,
+    name: &str,
+) -> Result<Option<SymbolHit>, String> {
+    Ok(load_definitions_for_name(connection, project_id, name)?
+        .into_iter()
+        .next())
+}
+
+fn enclosing_definition(
+    connection: &Connection,
+    project_id: i64,
+    file: &str,
+    line: u64,
+) -> Result<Option<SymbolHit>, String> {
+    connection
+        .query_row(
+            "SELECT file, line, kind, name, signature, is_definition, confidence
+             FROM symbols
+             WHERE project_id = ?1 AND file = ?2 AND is_definition = 1 AND line <= ?3
+             ORDER BY line DESC
+             LIMIT 1",
+            params![project_id, file, line as i64],
+            |row| {
+                Ok(symbol_hit_from_row(
+                    row.get(0)?,
+                    row.get::<_, i64>(1)? as u64,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get::<_, i64>(5)? != 0,
+                    row.get(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sql_error)
+}
+
+fn load_call_edges(connection: &Connection, project_id: i64) -> Result<Vec<CallEdge>, String> {
+    let mut statement = connection
+        .prepare("SELECT file, line, name FROM calls WHERE project_id = ?1")
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map(params![project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)? as u64,
+                row.get::<_, String>(2)?,
+            ))
+        })
+        .map_err(sql_error)?;
+
+    let mut edges = Vec::new();
+    for row in rows {
+        let (via_file, via_line, callee) = row.map_err(sql_error)?;
+        let Some(caller) = enclosing_definition(connection, project_id, &via_file, via_line)? else {
+            continue;
+        };
+        if caller.name.eq_ignore_ascii_case(&callee) {
+            continue;
+        }
+        edges.push(CallEdge {
+            caller: caller.name,
+            caller_file: caller.file,
+            caller_line: caller.line,
+            callee,
+            via_file,
+            via_line,
+        });
+    }
+    Ok(edges)
+}
+
+fn collect_impact_neighbors(
+    edges: &[CallEdge],
+    symbol: &str,
+    want_callers: bool,
+    depth: u32,
+    cap: usize,
+) -> Vec<ImpactNeighbor> {
+    let mut results = Vec::new();
+    let mut seen_names = HashSet::new();
+    let mut frontier: HashSet<String> = HashSet::new();
+    frontier.insert(symbol.to_string());
+
+    for _ in 0..depth {
+        let mut next_frontier = HashSet::new();
+        for current in &frontier {
+            for edge in edges {
+                let (neighbor_name, neighbor_file, neighbor_line) = if want_callers {
+                    if !edge.callee.eq_ignore_ascii_case(current) {
+                        continue;
+                    }
+                    (
+                        edge.caller.clone(),
+                        edge.caller_file.clone(),
+                        edge.caller_line,
+                    )
+                } else {
+                    if !edge.caller.eq_ignore_ascii_case(current) {
+                        continue;
+                    }
+                    // Prefer definition location of callee when available later; use via for now.
+                    (edge.callee.clone(), edge.via_file.clone(), edge.via_line)
+                };
+
+                let key = neighbor_name.to_lowercase();
+                if key == symbol.to_lowercase() || !seen_names.insert(key.clone()) {
+                    continue;
+                }
+                next_frontier.insert(neighbor_name.clone());
+                results.push(ImpactNeighbor {
+                    name: neighbor_name,
+                    file: neighbor_file,
+                    line: neighbor_line,
+                    via_file: edge.via_file.clone(),
+                    via_line: edge.via_line,
+                });
+                if results.len() >= cap {
+                    return results;
+                }
+            }
+        }
+        if next_frontier.is_empty() {
+            break;
+        }
+        frontier = next_frontier;
+    }
+
+    results
+}
+
+fn find_entry_paths(
+    connection: &Connection,
+    project_id: i64,
+    edges: &[CallEdge],
+    target: &str,
+    max_paths: usize,
+    max_depth: usize,
+) -> Result<Vec<EntryPath>, String> {
+    // Reverse adjacency: callee_lower -> list of caller edges
+    let mut reverse: HashMap<String, Vec<&CallEdge>> = HashMap::new();
+    for edge in edges {
+        reverse
+            .entry(edge.callee.to_lowercase())
+            .or_default()
+            .push(edge);
+    }
+
+    let mut queue = VecDeque::new();
+    queue.push_back((target.to_string(), vec![target.to_string()]));
+    let mut visited = HashSet::new();
+    visited.insert(target.to_lowercase());
+    let mut paths = Vec::new();
+
+    while let Some((current, chain)) = queue.pop_front() {
+        if paths.len() >= max_paths {
+            break;
+        }
+        if chain.len() > max_depth {
+            continue;
+        }
+        if is_entry_symbol_name(&current) && chain.len() > 1 {
+            let mut hops = Vec::new();
+            for name in chain.iter().rev() {
+                if let Some(hit) = best_hit_for_name(connection, project_id, name)? {
+                    hops.push(hit);
+                } else {
+                    hops.push(SymbolHit {
+                        name: name.clone(),
+                        file: String::new(),
+                        line: 0,
+                        kind: "function".to_string(),
+                        signature: String::new(),
+                        is_definition: false,
+                        confidence: "heuristic".to_string(),
+                    });
+                }
+            }
+            paths.push(EntryPath {
+                entry: current,
+                hops,
+            });
+            continue;
+        }
+
+        let Some(parents) = reverse.get(&current.to_lowercase()) else {
+            continue;
+        };
+        for edge in parents {
+            let key = edge.caller.to_lowercase();
+            if !visited.insert(key) {
+                continue;
+            }
+            let mut next_chain = chain.clone();
+            next_chain.push(edge.caller.clone());
+            queue.push_back((edge.caller.clone(), next_chain));
+        }
+    }
+
+    Ok(paths)
+}
+
+fn resolve_inspect_target(hits: &[SymbolHit], query: &str) -> Option<String> {
+    let exact: Vec<&SymbolHit> = hits
+        .iter()
+        .filter(|hit| hit.name.eq_ignore_ascii_case(query))
+        .collect();
+    if !exact.is_empty() {
+        return Some(exact[0].name.clone());
+    }
+
+    let mut names = HashSet::new();
+    for hit in hits {
+        names.insert(hit.name.to_lowercase());
+    }
+    if names.len() == 1 {
+        return hits.first().map(|hit| hit.name.clone());
+    }
+    None
+}
+
+pub fn inspect_symbol_at(
+    connection: &Connection,
+    project_id: i64,
+    query: &str,
+    depth: Option<u32>,
+) -> Result<InspectSymbolResponse, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Ok(InspectSymbolResponse {
+            query: trimmed.to_string(),
+            message: "请输入要查询的符号名。".to_string(),
+            candidates: Vec::new(),
+            report: None,
+        });
+    }
+
+    let depth = clamp_inspect_depth(depth);
+    let candidates = search_symbol_hits(connection, project_id, trimmed, 24)?;
+    if candidates.is_empty() {
+        return Ok(InspectSymbolResponse {
+            query: trimmed.to_string(),
+            message: format!("未找到与 `{trimmed}` 匹配的符号。可先重新索引，或换更短的标识符。"),
+            candidates: Vec::new(),
+            report: None,
+        });
+    }
+
+    let Some(target_name) = resolve_inspect_target(&candidates, trimmed) else {
+        return Ok(InspectSymbolResponse {
+            query: trimmed.to_string(),
+            message: format!("找到多个候选符号，请输入更精确的名称（当前显示前 {} 个）。", candidates.len()),
+            candidates,
+            report: None,
+        });
+    };
+
+    let definitions = load_definitions_for_name(connection, project_id, &target_name)?;
+    let edges = load_call_edges(connection, project_id)?;
+    let callers = collect_impact_neighbors(&edges, &target_name, true, depth, 40);
+    let mut callees = collect_impact_neighbors(&edges, &target_name, false, depth, 40);
+    for callee in &mut callees {
+        if let Some(hit) = best_hit_for_name(connection, project_id, &callee.name)? {
+            callee.file = hit.file;
+            callee.line = hit.line;
+        }
+    }
+    let entry_paths = find_entry_paths(connection, project_id, &edges, &target_name, 3, 10)?;
+
+    let message = format!(
+        "符号 `{target_name}`：{} 个定义，{} 个上游，{} 个下游，{} 条入口路径。",
+        definitions.len(),
+        callers.len(),
+        callees.len(),
+        entry_paths.len()
+    );
+
+    Ok(InspectSymbolResponse {
+        query: trimmed.to_string(),
+        message,
+        candidates: definitions.clone(),
+        report: Some(ImpactReport {
+            symbol: target_name,
+            definitions,
+            callers,
+            callees,
+            entry_paths,
+            confidence: "heuristic".to_string(),
+        }),
+    })
+}
+
 pub fn tokenize(question: &str) -> Vec<String> {
     let mut tokens = HashSet::new();
     // Prefer ASCII identifiers — they match source paths/symbols. Pure CJK phrases rarely help.
@@ -2276,7 +2855,8 @@ pub fn run() {
             commands::get_openai_settings,
             commands::set_openai_settings,
             commands::ask_project,
-            commands::export_client_summary
+            commands::export_client_summary,
+            commands::inspect_symbol
         ])
         .run(tauri::generate_context!())
         .expect("error while running CppInsight AI");
@@ -2319,6 +2899,16 @@ mod tests {
     fn ignores_invalid_scan_progress_line() {
         assert!(parse_scan_progress_line("not a progress line").is_none());
         assert!(parse_scan_progress_line("[scan] files=abc analyzed=1 reused=0 current=x").is_none());
+    }
+
+    #[test]
+    fn summarizes_cli_stderr_prefers_error_lines() {
+        let lines = vec![
+            "[scan] files=1 analyzed=0 reused=0 current=a.cpp".to_string(),
+            "[ERROR] Project path does not exist: D:/missing".to_string(),
+        ];
+        let summary = super::summarize_cli_stderr(&lines);
+        assert!(summary.contains("Project path does not exist"));
     }
 
     #[test]
@@ -2549,5 +3139,62 @@ data: [DONE]
         );
         assert!(selected[0].score >= selected.iter().map(|c| c.score).max().unwrap_or(0));
         assert_ne!(selected[0].file, "docs/notes.txt");
+    }
+
+    #[test]
+    fn inspect_symbol_reports_callers_callees_and_entry_path() {
+        let connection = open_memory_db();
+        connection
+            .execute(
+                "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
+                 VALUES('D:/demo', 'now', 2, 3, 0, '[]', 'heuristic', 'heuristic')",
+                [],
+            )
+            .unwrap();
+        let project_id: i64 = connection
+            .query_row("SELECT id FROM projects", [], |row| row.get(0))
+            .unwrap();
+
+        for (file, line, name) in [
+            ("src/main.cpp", 1_i64, "main"),
+            ("src/main.cpp", 20, "runPipeline"),
+            ("src/crypto.cpp", 10, "encryptFile"),
+        ] {
+            connection
+                .execute(
+                    "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
+                     VALUES(?1, ?2, ?3, 'function', ?4, '', '', 1, 'heuristic')",
+                    rusqlite::params![project_id, file, line, name],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO calls(project_id, file, line, name, confidence)
+                 VALUES(?1, 'src/main.cpp', 25, 'encryptFile', 'heuristic')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO calls(project_id, file, line, name, confidence)
+                 VALUES(?1, 'src/main.cpp', 5, 'runPipeline', 'heuristic')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+
+        let response =
+            super::inspect_symbol_at(&connection, project_id, "encryptFile", Some(2)).unwrap();
+        let report = response.report.expect("report");
+        assert_eq!(report.symbol, "encryptFile");
+        assert!(report
+            .callers
+            .iter()
+            .any(|item| item.name == "runPipeline"));
+        assert!(report.entry_paths.iter().any(|path| path.entry == "main"));
+        assert!(report
+            .entry_paths
+            .iter()
+            .any(|path| path.hops.iter().any(|hop| hop.name == "encryptFile")));
     }
 }

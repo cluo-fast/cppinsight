@@ -1,27 +1,31 @@
 # CppInsight AI Desktop
 
-This is the Tauri + React workbench for CppInsight AI.
+普通桌面应用入口：请从仓库根目录双击 `启动CppInsight.bat`。
 
-## Development
+## 日常使用
 
-1. Build the C++ CLI from the repository root:
+1. 双击 `启动CppInsight.bat`
+2. 点「打开 C/C++ 项目」
+3. 看总览，再提问 / 导出客户摘要
 
-   ```powershell
-   cmake -S . -B build-codex
-   cmake --build build-codex --config Release
-   ```
+## 开发
 
-2. Install desktop dependencies:
+```powershell
+# 仓库根目录
+.\scripts\start-desktop.ps1
+```
 
-   ```powershell
-   cd desktop
-   pnpm install
-   pnpm tauri dev
-   ```
+强制开发模式（即使已有 release 包）：
 
-3. Optional AI configuration:
+```powershell
+$env:CPPINSIGHT_FORCE_DEV = "1"
+.\scripts\start-desktop.ps1
+```
 
-   - Set `OPENAI_API_KEY` before launching, or enter a key in the app settings panel.
-   - Override the model with `OPENAI_MODEL`; otherwise the backend uses `gpt-4o-mini`.
+## 打包
 
-The Rust backend calls the C++ CLI as a sidecar process and stores indexes in a local SQLite database under the app data directory.
+```powershell
+.\scripts\package-app.ps1
+```
+
+打包会把 `cppinsight.exe` 一并打进 `resources`，安装后无需再记 CLI。

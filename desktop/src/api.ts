@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import type {
   AskResponse,
   IndexProgressEvent,
+  InspectSymbolResponse,
   OpenAiSettings,
   ProjectOverview,
   ScanResult
@@ -71,4 +72,18 @@ export function askProject(
 
 export function exportClientSummary(root: string, projectId: number): Promise<string> {
   return invoke<string>("export_client_summary", { root, projectId });
+}
+
+export function inspectSymbol(
+  root: string,
+  projectId: number,
+  query: string,
+  depth?: number
+): Promise<InspectSymbolResponse> {
+  return invoke<InspectSymbolResponse>("inspect_symbol", {
+    root,
+    projectId,
+    query,
+    depth: depth ?? null
+  });
 }

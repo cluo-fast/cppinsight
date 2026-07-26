@@ -9,7 +9,10 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_library(cppinsight_core
     src/common/Logger.cpp
     src/project/ProjectScanner.cpp
+    src/project/CompileCommands.cpp
+    src/project/ScanCache.cpp
     src/report/JsonReportWriter.cpp
+    src/report/OverviewWriter.cpp
 )
 
 target_include_directories(cppinsight_core PUBLIC
@@ -26,7 +29,7 @@ target_link_libraries(cppinsight PRIVATE
 
 function(cppinsight_apply_warnings target_name)
 if (MSVC)
-    target_compile_options(${target_name} PRIVATE /W4)
+    target_compile_options(${target_name} PRIVATE /W4 /utf-8)
 else()
     target_compile_options(${target_name} PRIVATE -Wall -Wextra -Wpedantic)
 endif()

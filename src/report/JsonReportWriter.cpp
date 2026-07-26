@@ -1,7 +1,6 @@
 #include "report/JsonReportWriter.h"
 
 #include <fstream>
-#include <iomanip>
 #include <iterator>
 #include <sstream>
 #include <stdexcept>
@@ -26,7 +25,9 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
                    << "\"file\": \"" << escapeJson(include.filePath.generic_string()) << "\", "
                    << "\"line\": " << include.line << ", "
                    << "\"target\": \"" << escapeJson(include.target) << "\", "
-                   << "\"kind\": \"" << escapeJson(include.kind) << "\""
+                   << "\"kind\": \"" << escapeJson(include.kind) << "\", "
+                   << "\"resolved\": " << (include.resolved ? "true" : "false") << ", "
+                   << "\"resolved_path\": \"" << escapeJson(include.resolvedPath) << "\""
                    << "}";
             if (index + 1 < includes.size()) {
                 output << ",";
@@ -45,7 +46,8 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
                    << "\"name\": \"" << escapeJson(symbol.name) << "\", "
                    << "\"signature\": \"" << escapeJson(symbol.signature) << "\", "
                    << "\"scope\": \"" << escapeJson(symbol.scope) << "\", "
-                   << "\"is_definition\": " << (symbol.isDefinition ? "true" : "false")
+                   << "\"is_definition\": " << (symbol.isDefinition ? "true" : "false") << ", "
+                   << "\"confidence\": \"" << escapeJson(symbol.confidence) << "\""
                    << "}";
             if (index + 1 < symbols.size()) {
                 output << ",";
@@ -60,7 +62,8 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
             output << indent << "{"
                    << "\"file\": \"" << escapeJson(call.filePath.generic_string()) << "\", "
                    << "\"line\": " << call.line << ", "
-                   << "\"name\": \"" << escapeJson(call.name) << "\""
+                   << "\"name\": \"" << escapeJson(call.name) << "\", "
+                   << "\"confidence\": \"" << escapeJson(call.confidence) << "\""
                    << "}";
             if (index + 1 < calls.size()) {
                 output << ",";
@@ -69,9 +72,25 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
         }
     };
 
+    auto writeCounts = [&output](const std::map<std::string, std::uint64_t>& counts) {
+        for (auto iterator = counts.begin(); iterator != counts.end(); ++iterator) {
+            output << "    \"" << escapeJson(iterator->first) << "\": " << iterator->second;
+            if (std::next(iterator) != counts.end()) {
+                output << ",";
+            }
+            output << "\n";
+        }
+    };
+
     output << "{\n";
-    output << "  \"schema_version\": 1,\n";
+    output << "  \"schema_version\": 2,\n";
     output << "  \"root\": \"" << escapeJson(result.rootPath.string()) << "\",\n";
+    output << "  \"mode\": \"" << escapeJson(result.mode) << "\",\n";
+    output << "  \"confidence\": \"" << escapeJson(result.confidence) << "\",\n";
+    output << "  \"scan_duration_ms\": " << result.scanDurationMs << ",\n";
+    output << "  \"compile_commands\": \"" << escapeJson(result.compileCommandsPath.string()) << "\",\n";
+    output << "  \"compile_commands_entries\": " << result.compileCommandsEntries << ",\n";
+    output << "  \"reused_file_count\": " << result.reusedFileCount << ",\n";
     output << "  \"file_count\": " << result.files.size() << ",\n";
     output << "  \"skipped_entries\": " << result.skippedEntries << ",\n";
     output << "  \"stats\": {\n";
@@ -87,24 +106,13 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
     output << "    }\n";
     output << "  },\n";
     output << "  \"extensions\": {\n";
-    for (auto iterator = result.extensionCounts.begin(); iterator != result.extensionCounts.end(); ++iterator) {
-        output << "    \"" << escapeJson(iterator->first) << "\": " << iterator->second;
-        if (std::next(iterator) != result.extensionCounts.end()) {
-            output << ",";
-        }
-        output << "\n";
-    }
+    writeCounts(result.extensionCounts);
     output << "  },\n";
     output << "  \"top_level_layout\": {\n";
-    for (auto iterator = result.topLevelDirectoryCounts.begin();
-         iterator != result.topLevelDirectoryCounts.end();
-         ++iterator) {
-        output << "    \"" << escapeJson(iterator->first) << "\": " << iterator->second;
-        if (std::next(iterator) != result.topLevelDirectoryCounts.end()) {
-            output << ",";
-        }
-        output << "\n";
-    }
+    writeCounts(result.topLevelDirectoryCounts);
+    output << "  },\n";
+    output << "  \"second_level_layout\": {\n";
+    writeCounts(result.secondLevelDirectoryCounts);
     output << "  },\n";
     output << "  \"diagnostics\": [\n";
     writeDiagnostics(result.diagnostics, "    ");
@@ -127,6 +135,9 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
         output << "      \"extension\": \"" << escapeJson(file.extension) << "\",\n";
         output << "      \"category\": \"" << escapeJson(file.category) << "\",\n";
         output << "      \"size_bytes\": " << file.sizeBytes << ",\n";
+        output << "      \"mtime_unix\": " << file.mtimeUnix << ",\n";
+        output << "      \"from_compile_commands\": " << (file.fromCompileCommands ? "true" : "false") << ",\n";
+        output << "      \"reused_from_cache\": " << (file.reusedFromCache ? "true" : "false") << ",\n";
         output << "      \"lines\": {\n";
         output << "        \"total\": " << file.lines.total << ",\n";
         output << "        \"code\": " << file.lines.code << ",\n";
@@ -156,6 +167,10 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
 }
 
 void JsonReportWriter::writeFile(const ScanResult& result, const std::filesystem::path& outputPath) const {
+    if (!outputPath.parent_path().empty()) {
+        std::filesystem::create_directories(outputPath.parent_path());
+    }
+
     std::ofstream output(outputPath);
     if (!output) {
         throw std::runtime_error("Failed to open JSON output file: " + outputPath.string());
@@ -164,39 +179,123 @@ void JsonReportWriter::writeFile(const ScanResult& result, const std::filesystem
     write(result, output);
 }
 
+namespace {
+
+void appendUnicodeEscape(std::ostringstream& output, unsigned int codeUnit) {
+    static const char* const hex = "0123456789abcdef";
+    output << "\\u"
+           << hex[(codeUnit >> 12) & 0xF]
+           << hex[(codeUnit >> 8) & 0xF]
+           << hex[(codeUnit >> 4) & 0xF]
+           << hex[codeUnit & 0xF];
+}
+
+int utf8SequenceLength(unsigned char lead) {
+    if (lead < 0x80) {
+        return 1;
+    }
+    if ((lead & 0xE0) == 0xC0) {
+        return 2;
+    }
+    if ((lead & 0xF0) == 0xE0) {
+        return 3;
+    }
+    if ((lead & 0xF8) == 0xF0) {
+        return 4;
+    }
+    return -1;
+}
+
+bool isUtf8Continuation(unsigned char character) {
+    return (character & 0xC0) == 0x80;
+}
+
+bool isValidUtf8Sequence(const unsigned char* bytes, int length) {
+    if (length <= 0) {
+        return false;
+    }
+    for (int index = 1; index < length; ++index) {
+        if (!isUtf8Continuation(bytes[index])) {
+            return false;
+        }
+    }
+    // Reject overlong / invalid lead ranges used by Windows local encodings mistaken as UTF-8.
+    if (length == 2 && bytes[0] < 0xC2) {
+        return false;
+    }
+    if (length == 3 && bytes[0] == 0xE0 && bytes[1] < 0xA0) {
+        return false;
+    }
+    if (length == 4 && bytes[0] == 0xF0 && bytes[1] < 0x90) {
+        return false;
+    }
+    if (length == 4 && bytes[0] > 0xF4) {
+        return false;
+    }
+    return true;
+}
+
+} // namespace
+
 std::string JsonReportWriter::escapeJson(const std::string& value) {
     std::ostringstream escaped;
+    const auto* bytes = reinterpret_cast<const unsigned char*>(value.data());
+    const std::size_t size = value.size();
 
-    for (const char character : value) {
+    for (std::size_t index = 0; index < size;) {
+        const unsigned char character = bytes[index];
         switch (character) {
         case '\"':
             escaped << "\\\"";
+            ++index;
             break;
         case '\\':
             escaped << "\\\\";
+            ++index;
             break;
         case '\b':
             escaped << "\\b";
+            ++index;
             break;
         case '\f':
             escaped << "\\f";
+            ++index;
             break;
         case '\n':
             escaped << "\\n";
+            ++index;
             break;
         case '\r':
             escaped << "\\r";
+            ++index;
             break;
         case '\t':
             escaped << "\\t";
+            ++index;
             break;
         default:
-            if (static_cast<unsigned char>(character) < 0x20) {
-                escaped << "\\u"
-                        << std::hex << std::setw(4) << std::setfill('0')
-                        << static_cast<int>(static_cast<unsigned char>(character));
+            if (character < 0x20) {
+                appendUnicodeEscape(escaped, character);
+                ++index;
+                break;
+            }
+            if (character < 0x80) {
+                escaped << static_cast<char>(character);
+                ++index;
+                break;
+            }
+
+            const int length = utf8SequenceLength(character);
+            if (length > 0 && index + static_cast<std::size_t>(length) <= size &&
+                isValidUtf8Sequence(bytes + index, length)) {
+                for (int offset = 0; offset < length; ++offset) {
+                    escaped << static_cast<char>(bytes[index + static_cast<std::size_t>(offset)]);
+                }
+                index += static_cast<std::size_t>(length);
             } else {
-                escaped << character;
+                // Local encodings (e.g. GBK paths/signatures) must not leak into the JSON file.
+                appendUnicodeEscape(escaped, character);
+                ++index;
             }
             break;
         }
