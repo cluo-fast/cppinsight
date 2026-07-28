@@ -1,5 +1,5 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   askProject,
   chooseProjectDirectory,
@@ -8,6 +8,10 @@ import {
   getOpenAiSettings,
   indexProject,
   inspectSymbol,
+  loadIndexedProject,
+  loadProjectChats,
+  loadWorkspace,
+  saveWorkspace,
   setOpenAiSettings
 } from "./api";
 import type {
@@ -17,8 +21,11 @@ import type {
   IndexProgressEvent,
   InspectSymbolResponse,
   OpenAiSettings,
+  PersistedChat,
+  PersistedMessage,
   ProjectOverview,
-  SymbolInfo
+  SymbolInfo,
+  WorkspaceSnapshot
 } from "./types";
 import "./styles.css";
 
@@ -42,6 +49,7 @@ type ProjectSession = {
   overview: ProjectOverview;
   summary: string;
   indexing: boolean;
+  indexMissing?: boolean;
   chats: ChatThread[];
   activeChatId: string;
 };
@@ -109,6 +117,78 @@ function createChat(title = "新对话"): ChatThread {
   };
 }
 
+function placeholderOverview(rootPath: string): ProjectOverview {
+  return {
+    project_id: -1,
+    root: rootPath,
+    indexed_at: "",
+    file_count: 0,
+    symbol_count: 0,
+    include_count: 0,
+    stats: {
+      source_files: 0,
+      header_files: 0,
+      inline_files: 0,
+      total_bytes: 0,
+      lines: { total: 0, code: 0, comment: 0, blank: 0 }
+    },
+    extensions: {},
+    top_level_layout: {},
+    hotspots: [],
+    symbols: [],
+    diagnostics: ["本地索引不可用：未找到 .cppinsight/index.sqlite 或项目记录"]
+  };
+}
+
+function messageToPersisted(message: ChatMessage, sortOrder: number): PersistedMessage {
+  return {
+    id: message.id,
+    role: message.role,
+    content_json: JSON.stringify(message),
+    sort_order: sortOrder
+  };
+}
+
+function messageFromPersisted(persisted: PersistedMessage): ChatMessage {
+  try {
+    return JSON.parse(persisted.content_json) as ChatMessage;
+  } catch {
+    return {
+      id: persisted.id,
+      role: persisted.role === "assistant" ? "assistant" : "user",
+      text: persisted.content_json,
+      kind: "text"
+    };
+  }
+}
+
+function chatsFromPersisted(persisted: PersistedChat[]): {
+  chats: ChatThread[];
+  activeChatId: string;
+} {
+  if (persisted.length === 0) {
+    const first = createChat("对话 1");
+    return { chats: [first], activeChatId: first.id };
+  }
+  const chats: ChatThread[] = persisted
+    .slice()
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((chat) => ({
+      id: chat.id,
+      title: chat.title,
+      messages: chat.messages
+        .slice()
+        .sort((a, b) => a.sort_order - b.sort_order)
+        .map(messageFromPersisted),
+      question: "",
+      composerMode: chat.composer_mode === "symbol" ? "symbol" : "ask",
+      running: false
+    }));
+  const active =
+    persisted.find((chat) => chat.active)?.id ?? chats[0]?.id ?? createChat("对话 1").id;
+  return { chats, activeChatId: active };
+}
+
 const ENTRY_NAMES = new Set([
   "main",
   "wmain",
@@ -140,6 +220,17 @@ export default function App() {
   const [aiSettings, setAiSettings] = useState<OpenAiSettings>(DEFAULT_AI_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
+
+  const sessionsRef = useRef(sessions);
+  sessionsRef.current = sessions;
+  const activeRootRef = useRef(activeRoot);
+  activeRootRef.current = activeRoot;
+  const retainedChatsRef = useRef<Record<string, { chats: ChatThread[]; activeChatId: string }>>(
+    {}
+  );
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSkipRef = useRef(true);
 
   const active = useMemo(
     () => sessions.find((session) => session.id === activeRoot) ?? null,
@@ -155,6 +246,127 @@ export default function App() {
 
   const overview = active?.overview ?? null;
   const anyIndexing = sessions.some((session) => session.indexing);
+
+  function buildSnapshot(
+    nextSessions: ProjectSession[],
+    nextActive: string | null,
+    retained: Record<string, { chats: ChatThread[]; activeChatId: string }>
+  ): WorkspaceSnapshot {
+    const open_projects = nextSessions.map((session, index) => ({
+      root_key: session.id,
+      root_path: session.overview.root,
+      sort_order: index
+    }));
+
+    const chatRoots = new Map<string, { chats: ChatThread[]; activeChatId: string }>();
+    for (const session of nextSessions) {
+      chatRoots.set(session.id, { chats: session.chats, activeChatId: session.activeChatId });
+    }
+    for (const [rootKey, value] of Object.entries(retained)) {
+      if (!chatRoots.has(rootKey)) {
+        chatRoots.set(rootKey, value);
+      }
+    }
+
+    const chats: PersistedChat[] = [];
+    for (const [rootKey, value] of chatRoots) {
+      value.chats.forEach((chat, index) => {
+        chats.push({
+          id: chat.id,
+          root_key: rootKey,
+          title: chat.title,
+          composer_mode: chat.composerMode,
+          sort_order: index,
+          active: chat.id === value.activeChatId,
+          messages: chat.messages.map((message, messageIndex) =>
+            messageToPersisted(message, messageIndex)
+          )
+        });
+      });
+    }
+
+    return {
+      active_root_key: nextActive,
+      open_projects,
+      chats
+    };
+  }
+
+  function schedulePersist() {
+    if (persistSkipRef.current) {
+      return;
+    }
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+    }
+    persistTimerRef.current = setTimeout(() => {
+      const snapshot = buildSnapshot(
+        sessionsRef.current,
+        activeRootRef.current,
+        retainedChatsRef.current
+      );
+      void saveWorkspace(snapshot).catch((err) => {
+        console.error("save_workspace failed", err);
+      });
+    }, 300);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const loaded = await loadWorkspace();
+        if (cancelled) {
+          return;
+        }
+        const nextSessions: ProjectSession[] = loaded.projects.map((project) => {
+          const { chats, activeChatId } = chatsFromPersisted(project.chats);
+          const overview = project.overview ?? placeholderOverview(project.root_path);
+          return {
+            id: project.root_key || normalizeRootKey(project.root_path),
+            overview,
+            summary: "",
+            indexing: false,
+            indexMissing: project.index_missing || !project.overview,
+            chats,
+            activeChatId: project.active_chat_id ?? activeChatId
+          };
+        });
+        setSessions(nextSessions);
+        const active =
+          loaded.active_root_key &&
+          nextSessions.some((session) => session.id === loaded.active_root_key)
+            ? loaded.active_root_key
+            : nextSessions[0]?.id ?? null;
+        setActiveRoot(active);
+        if (nextSessions.length > 0) {
+          setStatus(`已恢复 ${nextSessions.length} 个项目（来自上次会话）`);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          persistSkipRef.current = false;
+          setWorkspaceReady(true);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!workspaceReady) {
+      return;
+    }
+    schedulePersist();
+  }, [sessions, activeRoot, workspaceReady]);
 
   const modules = useMemo(() => {
     if (!overview) {
@@ -208,6 +420,98 @@ export default function App() {
     patchChat(active.id, activeChat.id, patch);
   }
 
+  async function resolveChatsForRoot(rootKey: string): Promise<{
+    chats: ChatThread[];
+    activeChatId: string;
+  }> {
+    const retained = retainedChatsRef.current[rootKey];
+    if (retained && retained.chats.length > 0) {
+      delete retainedChatsRef.current[rootKey];
+      return retained;
+    }
+    try {
+      const persisted = await loadProjectChats(rootKey);
+      if (persisted.length > 0) {
+        return chatsFromPersisted(persisted);
+      }
+    } catch (err) {
+      console.error("load_project_chats failed", err);
+    }
+    const first = createChat("对话 1");
+    return { chats: [first], activeChatId: first.id };
+  }
+
+  async function upsertSessionOverview(
+    next: ProjectOverview,
+    provisionalId?: string,
+    options?: { indexMissing?: boolean }
+  ) {
+    const id = normalizeRootKey(next.root);
+    const restored = await resolveChatsForRoot(id);
+    setSessions((current) => {
+      const existing = current.find(
+        (session) =>
+          session.id === id || (provisionalId != null && session.id === provisionalId)
+      );
+      if (existing) {
+        return current.map((session) =>
+          session.id === existing.id
+            ? {
+                ...session,
+                id,
+                overview: next,
+                indexing: false,
+                indexMissing: options?.indexMissing ?? false,
+                chats: session.chats.length > 0 ? session.chats : restored.chats,
+                activeChatId:
+                  session.chats.find((chat) => chat.id === session.activeChatId)?.id ??
+                  restored.activeChatId
+              }
+            : session
+        );
+      }
+      return [
+        ...current,
+        {
+          id,
+          overview: next,
+          summary: "",
+          indexing: false,
+          indexMissing: options?.indexMissing ?? false,
+          chats: restored.chats,
+          activeChatId: restored.activeChatId
+        }
+      ];
+    });
+    setActiveRoot(id);
+  }
+
+  async function runIndexAtPath(path: string, provisionalId: string) {
+    setSessions((current) =>
+      current.map((session) =>
+        session.id === provisionalId ? { ...session, indexing: true } : session
+      )
+    );
+    if (sessions.some((session) => session.id === provisionalId)) {
+      setActiveRoot(provisionalId);
+    }
+    setStatus("正在扫描代码并建立索引…");
+
+    let unlisten: UnlistenFn | undefined;
+    try {
+      unlisten = await listen<IndexProgressEvent>("index-progress", (event) => {
+        setStatus(formatIndexProgress(event.payload));
+      });
+      const next = await indexProject(path);
+      await upsertSessionOverview(next, provisionalId, { indexMissing: false });
+      setStatus(null);
+    } finally {
+      if (unlisten) {
+        unlisten();
+      }
+    }
+  }
+
   async function openProject() {
     setError(null);
     setStatus("正在选择项目目录…");
@@ -221,63 +525,18 @@ export default function App() {
 
       const provisionalId = normalizeRootKey(path);
       indexingId = provisionalId;
-      setSessions((current) =>
-        current.map((session) =>
-          session.id === provisionalId ? { ...session, indexing: true } : session
-        )
-      );
-      if (sessions.some((session) => session.id === provisionalId)) {
-        setActiveRoot(provisionalId);
-      }
-      setStatus("正在扫描代码并建立索引…");
 
-      let unlisten: UnlistenFn | undefined;
-      try {
-        unlisten = await listen<IndexProgressEvent>("index-progress", (event) => {
-          setStatus(formatIndexProgress(event.payload));
-        });
-        const next = await indexProject(path);
-        const id = normalizeRootKey(next.root);
-        const firstChat = createChat("总览对话");
-        setSessions((current) => {
-          const existing = current.find(
-            (session) => session.id === id || session.id === provisionalId
-          );
-          if (existing) {
-            return current.map((session) =>
-              session.id === existing.id
-                ? {
-                    ...session,
-                    id,
-                    overview: next,
-                    indexing: false,
-                    chats: session.chats.length > 0 ? session.chats : [firstChat],
-                    activeChatId:
-                      session.chats.find((chat) => chat.id === session.activeChatId)?.id ??
-                      firstChat.id
-                  }
-                : session
-            );
-          }
-          return [
-            ...current,
-            {
-              id,
-              overview: next,
-              summary: "",
-              indexing: false,
-              chats: [firstChat],
-              activeChatId: firstChat.id
-            }
-          ];
-        });
-        setActiveRoot(id);
-        setStatus(null);
-      } finally {
-        if (unlisten) {
-          unlisten();
-        }
+      setStatus("正在检查已有索引…");
+      const existing = await loadIndexedProject(path);
+      if (existing) {
+        await upsertSessionOverview(existing, provisionalId, { indexMissing: false });
+        setStatus(
+          `已加载本地索引（${existing.file_count} 个文件），未重新扫描。需要更新时点「重新索引」。`
+        );
+        return;
       }
+
+      await runIndexAtPath(path, provisionalId);
     } catch (err) {
       if (indexingId) {
         setSessions((current) =>
@@ -291,12 +550,37 @@ export default function App() {
     }
   }
 
+  async function reindexActiveProject() {
+    if (!active) {
+      return;
+    }
+    setError(null);
+    const path = active.overview.root;
+    const provisionalId = active.id;
+    try {
+      await runIndexAtPath(path, provisionalId);
+    } catch (err) {
+      setSessions((current) =>
+        current.map((session) =>
+          session.id === provisionalId ? { ...session, indexing: false } : session
+        )
+      );
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus(null);
+    }
+  }
+
   function closeSession(rootId: string, event?: React.MouseEvent) {
     event?.stopPropagation();
     const index = sessions.findIndex((session) => session.id === rootId);
     if (index < 0) {
       return;
     }
+    const closing = sessions[index];
+    retainedChatsRef.current[rootId] = {
+      chats: closing.chats,
+      activeChatId: closing.activeChatId
+    };
     const nextSessions = sessions.filter((session) => session.id !== rootId);
     setSessions(nextSessions);
     if (activeRoot === rootId) {
@@ -359,7 +643,7 @@ export default function App() {
   }
 
   async function sendQuestion(text: string) {
-    if (!active || !activeChat || !text.trim() || activeChat.running) {
+    if (!active || !activeChat || !text.trim() || activeChat.running || active.indexMissing) {
       return;
     }
     const root = active.overview.root;
@@ -398,7 +682,7 @@ export default function App() {
   }
 
   async function sendInspect(text: string) {
-    if (!active || !activeChat || !text.trim() || activeChat.running) {
+    if (!active || !activeChat || !text.trim() || activeChat.running || active.indexMissing) {
       return;
     }
     const root = active.overview.root;
@@ -463,6 +747,8 @@ export default function App() {
   const composerMode: ComposerMode = activeChat?.composerMode ?? "ask";
   const chatBusy = Boolean(activeChat?.running);
   const projectIndexing = Boolean(active?.indexing);
+  const indexBlocked = Boolean(active?.indexMissing);
+  const composerLocked = chatBusy || indexBlocked || projectIndexing;
 
   return (
     <div className="app-shell">
@@ -475,6 +761,16 @@ export default function App() {
           <button disabled={anyIndexing} onClick={() => void openProject()}>
             {sessions.length > 0 ? "打开其他项目" : "打开项目"}
           </button>
+          {active ? (
+            <button
+              className="secondary"
+              disabled={anyIndexing || projectIndexing}
+              title="强制重新扫描并更新本地索引"
+              onClick={() => void reindexActiveProject()}
+            >
+              重新索引
+            </button>
+          ) : null}
           <button
             className="secondary"
             onClick={() => {
@@ -572,17 +868,23 @@ export default function App() {
 
       {error ? <div className="banner error">{error}</div> : null}
       {status ? <div className="banner">{status}</div> : null}
+      {active?.indexMissing ? (
+        <div className="banner error">
+          本地索引不可用。可点「重新索引」重建，或关闭该项目。
+        </div>
+      ) : null}
 
       {sessions.length === 0 ? (
         <section className="welcome">
           <h1>像普通软件一样摸清陌生 C++ 仓库</h1>
           <p>
-            点「打开项目」，选择源码目录。应用会自动扫描、生成总览，并支持中文提问。可同时打开多个项目，每个项目可开多条对话。
+            点「打开项目」，选择源码目录。若目录下已有{" "}
+            <code>.cppinsight/index.sqlite</code>，会直接加载，不会重复全量扫描。
           </p>
           <ol>
             <li>打开客户或同事给你的工程目录</li>
-            <li>先看模块地图、入口候选、热点文件</li>
-            <li>再问「入口在哪」「某目录负责什么」；执行中可切到其他对话</li>
+            <li>首次会扫描建索引；之后再打开走本地缓存</li>
+            <li>代码有变时可点「重新索引」；提问时可开多条对话并行</li>
           </ol>
           <button className="primary-lg" disabled={anyIndexing} onClick={() => void openProject()}>
             打开 C/C++ 项目
@@ -960,7 +1262,7 @@ export default function App() {
                   <button
                     type="button"
                     className={`mode-chip${composerMode === "ask" ? " active" : ""}`}
-                    disabled={chatBusy}
+                    disabled={composerLocked}
                     onClick={() => updateActiveChat({ composerMode: "ask" })}
                   >
                     问 AI
@@ -968,7 +1270,7 @@ export default function App() {
                   <button
                     type="button"
                     className={`mode-chip${composerMode === "symbol" ? " active" : ""}`}
-                    disabled={chatBusy}
+                    disabled={composerLocked}
                     onClick={() => updateActiveChat({ composerMode: "symbol" })}
                   >
                     查符号
@@ -980,7 +1282,7 @@ export default function App() {
                       <button
                         key={item}
                         className="chip"
-                        disabled={chatBusy}
+                        disabled={composerLocked}
                         onClick={() => {
                           updateActiveChat({ question: item, composerMode: "ask" });
                           void sendQuestion(item);
@@ -1000,6 +1302,7 @@ export default function App() {
                     value={activeChat.question}
                     onChange={(event) => updateActiveChat({ question: event.target.value })}
                     rows={2}
+                    disabled={composerLocked}
                     placeholder={
                       composerMode === "symbol"
                         ? "例如：encryptFile / ProjectScanner…"
@@ -1008,14 +1311,14 @@ export default function App() {
                     onKeyDown={(event) => {
                       if (event.key === "Enter" && !event.shiftKey) {
                         event.preventDefault();
-                        if (!chatBusy && activeChat.question.trim()) {
+                        if (!composerLocked && activeChat.question.trim()) {
                           submitComposer(activeChat.question);
                         }
                       }
                     }}
                   />
                   <button
-                    disabled={chatBusy || !activeChat.question.trim()}
+                    disabled={composerLocked || !activeChat.question.trim()}
                     onClick={() => submitComposer(activeChat.question)}
                   >
                     {chatBusy

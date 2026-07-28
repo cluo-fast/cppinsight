@@ -1,12 +1,37 @@
 use crate::{
     ask_project_at_with_settings, build_client_summary, emit_index_progress, index_db_path_for_root,
     index_scan_json_at, inspect_symbol_at, load_project_overview, migrate_legacy_project_if_needed,
-    open_database_at, overview_from_scan, read_openai_settings, run_scan, run_scan_with_progress,
-    set_api_key_at, set_openai_settings_at, settings_db_path_from_app, write_index, AskResponse,
-    IndexProgressEvent, InspectSymbolResponse, OpenAiSettings, ProjectOverview, ScanResult,
+    open_database_at, overview_from_scan, project_index_db_path, read_openai_settings, run_scan,
+    run_scan_with_progress, set_api_key_at, set_openai_settings_at, settings_db_path_from_app,
+    try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
+    InspectSymbolResponse, OpenAiSettings, ProjectOverview, ScanResult,
 };
+use crate::{
+    app_data_dir_from_app,
+    workspace::{
+        load_chats_for_root_key, load_workspace_snapshot, save_workspace_snapshot,
+        workspace_db_path, PersistedChat, WorkspaceSnapshot,
+    },
+};
+use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoadedWorkspace {
+    pub active_root_key: Option<String>,
+    pub projects: Vec<LoadedProject>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LoadedProject {
+    pub root_key: String,
+    pub root_path: String,
+    pub index_missing: bool,
+    pub overview: Option<ProjectOverview>,
+    pub chats: Vec<PersistedChat>,
+    pub active_chat_id: Option<String>,
+}
 
 #[tauri::command]
 pub async fn scan_project(path: String) -> Result<ScanResult, String> {
@@ -87,6 +112,76 @@ pub fn get_project_overview(
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
     let connection = open_database_at(&db_path)?;
     load_project_overview(&connection, project_id)
+}
+
+/// Open an already-indexed project without rescanning. Returns `null` if no local index exists.
+#[tauri::command]
+pub fn load_indexed_project(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<Option<ProjectOverview>, String> {
+    let root = PathBuf::from(&path);
+    let db_path = index_db_path_for_root(&app, &root)?;
+    if let Err(error) = migrate_legacy_project_if_needed(&app, &root, &db_path) {
+        eprintln!("warning: legacy index migration skipped: {error}");
+    }
+    try_load_indexed_project_at(&root, &db_path)
+}
+
+#[tauri::command]
+pub fn load_workspace(app: tauri::AppHandle) -> Result<LoadedWorkspace, String> {
+    let app_data = app_data_dir_from_app(&app)?;
+    let db = workspace_db_path(&app_data);
+    let snap = load_workspace_snapshot(&db)?;
+
+    let mut projects = Vec::new();
+    for open in snap.open_projects {
+        let root = PathBuf::from(&open.root_path);
+        let index_db = project_index_db_path(&root);
+        let overview = try_load_indexed_project_at(&root, &index_db)?;
+        let index_missing = overview.is_none();
+        let chats: Vec<_> = snap
+            .chats
+            .iter()
+            .filter(|c| c.root_key == open.root_key)
+            .cloned()
+            .collect();
+        let active_chat_id = chats
+            .iter()
+            .find(|c| c.active)
+            .map(|c| c.id.clone())
+            .or_else(|| chats.first().map(|c| c.id.clone()));
+        projects.push(LoadedProject {
+            root_key: open.root_key,
+            root_path: open.root_path,
+            index_missing,
+            overview,
+            chats,
+            active_chat_id,
+        });
+    }
+
+    Ok(LoadedWorkspace {
+        active_root_key: snap.active_root_key,
+        projects,
+    })
+}
+
+#[tauri::command]
+pub fn save_workspace(app: tauri::AppHandle, snapshot: WorkspaceSnapshot) -> Result<(), String> {
+    let app_data = app_data_dir_from_app(&app)?;
+    let db = workspace_db_path(&app_data);
+    save_workspace_snapshot(&db, &snapshot)
+}
+
+#[tauri::command]
+pub fn load_project_chats(
+    app: tauri::AppHandle,
+    root_key: String,
+) -> Result<Vec<PersistedChat>, String> {
+    let app_data = app_data_dir_from_app(&app)?;
+    let db = workspace_db_path(&app_data);
+    load_chats_for_root_key(&db, &root_key)
 }
 
 #[tauri::command]

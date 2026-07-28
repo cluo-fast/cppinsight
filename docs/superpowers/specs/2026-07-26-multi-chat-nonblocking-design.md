@@ -33,4 +33,5 @@ ChatThread {
 
 ## Persistence
 
-- In-memory for this phase (session lifetime). Optional `.cppinsight/chats.json` later.
+Persisted via app-data `workspace.sqlite` (open projects + chats). See
+`2026-07-27-workspace-persistence-design.md`. Closing a project (×) keeps chats in DB.

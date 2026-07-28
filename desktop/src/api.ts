@@ -4,9 +4,12 @@ import type {
   AskResponse,
   IndexProgressEvent,
   InspectSymbolResponse,
+  LoadedWorkspace,
   OpenAiSettings,
+  PersistedChat,
   ProjectOverview,
-  ScanResult
+  ScanResult,
+  WorkspaceSnapshot
 } from "./types";
 
 export function formatIndexProgress(event: IndexProgressEvent): string {
@@ -40,6 +43,11 @@ export function scanProject(path: string): Promise<ScanResult> {
 
 export function indexProject(path: string): Promise<ProjectOverview> {
   return invoke<ProjectOverview>("index_project", { path });
+}
+
+/** Load existing project-local index; `null` if not indexed yet. */
+export function loadIndexedProject(path: string): Promise<ProjectOverview | null> {
+  return invoke<ProjectOverview | null>("load_indexed_project", { path });
 }
 
 export function indexScanJson(scanJson: string): Promise<ProjectOverview> {
@@ -86,4 +94,16 @@ export function inspectSymbol(
     query,
     depth: depth ?? null
   });
+}
+
+export function loadWorkspace(): Promise<LoadedWorkspace> {
+  return invoke<LoadedWorkspace>("load_workspace");
+}
+
+export function saveWorkspace(snapshot: WorkspaceSnapshot): Promise<void> {
+  return invoke<void>("save_workspace", { snapshot });
+}
+
+export function loadProjectChats(rootKey: string): Promise<PersistedChat[]> {
+  return invoke<PersistedChat[]>("load_project_chats", { rootKey });
 }

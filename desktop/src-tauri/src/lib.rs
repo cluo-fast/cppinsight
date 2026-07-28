@@ -1,4 +1,5 @@
 mod commands;
+pub mod workspace;
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -2781,19 +2782,58 @@ pub fn list_projects(db_path: &Path) -> Result<Vec<(i64, String, String)>, Strin
     Ok(projects)
 }
 
+fn find_project_id_normalized(connection: &Connection, root: &str) -> Result<Option<i64>, String> {
+    let target = normalize_root_key(root);
+    let mut statement = connection
+        .prepare("SELECT id, root FROM projects ORDER BY id DESC")
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .map_err(sql_error)?;
+    for row in rows {
+        let (id, stored_root) = row.map_err(sql_error)?;
+        if normalize_root_key(&stored_root) == target {
+            return Ok(Some(id));
+        }
+    }
+    Ok(None)
+}
+
 pub fn find_project_id_by_root(db_path: &Path, root: &str) -> Result<i64, String> {
     let connection = open_database_at(db_path)?;
-    let canonical = std::fs::canonicalize(root)
-        .map(|path| path.to_string_lossy().to_string())
-        .unwrap_or_else(|_| root.to_string());
+    if let Some(id) = find_project_id_normalized(&connection, root)? {
+        return Ok(id);
+    }
+    Err(format!("no indexed project found for root: {root}"))
+}
 
-    connection
-        .query_row(
-            "SELECT id FROM projects WHERE root = ?1 OR root = ?2 ORDER BY id DESC LIMIT 1",
-            params![root, canonical],
-            |row| row.get(0),
-        )
-        .map_err(|_| format!("no indexed project found for root: {root}"))
+/// Load overview from an existing project-local index, if present.
+pub fn try_load_indexed_project_at(root: &Path, db_path: &Path) -> Result<Option<ProjectOverview>, String> {
+    if !db_path.exists() {
+        return Ok(None);
+    }
+    let root_str = root.to_string_lossy().to_string();
+    let connection = open_database_at(db_path)?;
+
+    if let Some(project_id) = find_project_id_normalized(&connection, &root_str)? {
+        return Ok(Some(load_project_overview(&connection, project_id)?));
+    }
+
+    // Project-local DB lives under `<root>/.cppinsight/`; if it only has one project row,
+    // treat it as a cache hit even when stored root string differs slightly.
+    let count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+        .map_err(sql_error)?;
+    if count == 1 {
+        let project_id: i64 = connection
+            .query_row("SELECT id FROM projects ORDER BY id DESC LIMIT 1", [], |row| {
+                row.get(0)
+            })
+            .map_err(sql_error)?;
+        return Ok(Some(load_project_overview(&connection, project_id)?));
+    }
+
+    Ok(None)
 }
 
 pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<String, String> {
@@ -2967,6 +3007,10 @@ pub fn run() {
             commands::index_project,
             commands::index_scan_json,
             commands::get_project_overview,
+            commands::load_indexed_project,
+            commands::load_workspace,
+            commands::save_workspace,
+            commands::load_project_chats,
             commands::set_openai_api_key,
             commands::get_openai_settings,
             commands::set_openai_settings,
@@ -3128,6 +3172,63 @@ data: [DONE]
         let connection = rusqlite::Connection::open_in_memory().expect("memory db");
         super::migrate_database(&connection).expect("migrate");
         connection
+    }
+
+    #[test]
+    fn try_load_indexed_project_returns_none_without_db() {
+        let root = std::env::temp_dir().join(format!("cppinsight-missing-{}", std::process::id()));
+        let db = root.join(".cppinsight").join("index.sqlite");
+        let loaded = super::try_load_indexed_project_at(&root, &db).expect("load");
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn try_load_indexed_project_reads_existing_index() {
+        let root = std::env::temp_dir().join(format!("cppinsight-load-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join(".cppinsight")).expect("mkdir");
+        let db_path = root.join(".cppinsight").join("index.sqlite");
+        let root_str = root.to_string_lossy().to_string();
+
+        {
+            let mut connection = super::open_database_at(&db_path).expect("open db");
+            let scan = super::ScanResult {
+                schema_version: 1,
+                root: root_str.clone(),
+                mode: "heuristic".into(),
+                confidence: "heuristic".into(),
+                scan_duration_ms: 0,
+                compile_commands: String::new(),
+                compile_commands_entries: 0,
+                reused_file_count: 0,
+                file_count: 1,
+                skipped_entries: 0,
+                stats: super::ScanStats::default(),
+                extensions: BTreeMap::new(),
+                top_level_layout: BTreeMap::new(),
+                second_level_layout: BTreeMap::new(),
+                diagnostics: Vec::new(),
+                includes: Vec::new(),
+                symbols: Vec::new(),
+                calls: Vec::new(),
+                files: Vec::new(),
+            };
+            super::write_index(&mut connection, &scan).expect("write_index");
+        }
+
+        let loaded = super::try_load_indexed_project_at(&root, &db_path)
+            .expect("load")
+            .expect("should find project");
+        assert!(loaded.project_id > 0);
+        assert_eq!(loaded.root, root_str);
+
+        // Slash/case variants should still hit the same project-local index.
+        let alt = root_str.replace('\\', "/");
+        let loaded_alt = super::try_load_indexed_project_at(std::path::Path::new(&alt), &db_path)
+            .expect("load alt")
+            .expect("slash variant should match");
+        assert_eq!(loaded_alt.project_id, loaded.project_id);
+        let _ = std::fs::remove_dir_all(&root);
     }
 
     #[test]

@@ -173,3 +173,40 @@ export interface OpenAiSettings {
   api_key: string;
   model: string;
 }
+
+export interface PersistedMessage {
+  id: string;
+  role: string;
+  content_json: string;
+  sort_order: number;
+}
+
+export interface PersistedChat {
+  id: string;
+  root_key: string;
+  title: string;
+  composer_mode: string;
+  sort_order: number;
+  active: boolean;
+  messages: PersistedMessage[];
+}
+
+export interface WorkspaceSnapshot {
+  active_root_key: string | null;
+  open_projects: { root_key: string; root_path: string; sort_order: number }[];
+  chats: PersistedChat[];
+}
+
+export interface LoadedProject {
+  root_key: string;
+  root_path: string;
+  index_missing: boolean;
+  overview: ProjectOverview | null;
+  chats: PersistedChat[];
+  active_chat_id: string | null;
+}
+
+export interface LoadedWorkspace {
+  active_root_key: string | null;
+  projects: LoadedProject[];
+}
