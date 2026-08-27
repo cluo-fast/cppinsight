@@ -733,12 +733,25 @@ fn migrate_legacy_api_keys_from_paths(
     Ok(())
 }
 
+fn deduplicate_legacy_candidates(candidates: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    candidates
+        .into_iter()
+        .filter(|path| {
+            let key = if cfg!(windows) {
+                path.to_string_lossy().to_ascii_lowercase()
+            } else {
+                path.to_string_lossy().to_string()
+            };
+            seen.insert(key)
+        })
+        .collect()
+}
+
 pub(crate) fn migrate_legacy_api_keys(app: &tauri::AppHandle) -> Result<(), String> {
     let settings_path = settings_db_path_from_app(app)?;
     let settings = open_database_at(&settings_path)?;
-    let mut candidates = legacy_db_candidates(app);
-    candidates.sort();
-    candidates.dedup();
+    let candidates = deduplicate_legacy_candidates(legacy_db_candidates(app));
     migrate_legacy_api_keys_from_paths(&settings, &candidates, &secrets::OsSecretBackend)
 }
 
@@ -3282,6 +3295,48 @@ mod tests {
             super::read_setting_value(&legacy, "openai_api_key").unwrap(),
             None
         );
+    }
+
+    #[test]
+    fn legacy_secret_candidates_preserve_appdata_priority_when_keys_conflict() {
+        let directory = tempfile::tempdir().unwrap();
+        let appdata_path = directory.path().join("z-appdata.sqlite");
+        let cli_path = directory.path().join("a-cli.sqlite");
+        for (path, key) in [
+            (&appdata_path, "sk-desktop-newer"),
+            (&cli_path, "sk-cli-older"),
+        ] {
+            let connection = rusqlite::Connection::open(path).unwrap();
+            super::migrate_database(&connection).unwrap();
+            super::upsert_setting_value(&connection, "openai_api_key", key).unwrap();
+        }
+
+        let candidates = super::deduplicate_legacy_candidates(vec![
+            appdata_path.clone(),
+            cli_path.clone(),
+            appdata_path.clone(),
+        ]);
+        assert_eq!(candidates, vec![appdata_path.clone(), cli_path.clone()]);
+
+        let settings = rusqlite::Connection::open_in_memory().unwrap();
+        super::migrate_database(&settings).unwrap();
+        let backend = TestSecretBackend::default();
+        super::migrate_legacy_api_keys_from_paths(&settings, &candidates, &backend).unwrap();
+
+        assert_eq!(
+            backend
+                .get(crate::secrets::OPENAI_ACCOUNT)
+                .unwrap()
+                .as_deref(),
+            Some("sk-desktop-newer")
+        );
+        for path in [appdata_path, cli_path] {
+            let connection = rusqlite::Connection::open(path).unwrap();
+            assert_eq!(
+                super::read_setting_value(&connection, "openai_api_key").unwrap(),
+                None
+            );
+        }
     }
 
     #[test]

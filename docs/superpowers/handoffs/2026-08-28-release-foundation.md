@@ -21,13 +21,13 @@ The release-foundation gate passed on macOS arm64:
 - `ctest --test-dir /tmp/cppinsight-release-foundation --output-on-failure`: 1/1 passed.
 - `pnpm --dir desktop run verify:release`: passed.
 - `pnpm --dir desktop run build`: TypeScript and Vite production build passed.
-- `cargo test --manifest-path desktop/src-tauri/Cargo.toml`: 31/31 library tests passed; binary and doc-test targets passed.
+- `cargo test --manifest-path desktop/src-tauri/Cargo.toml`: 32/32 library tests passed; binary and doc-test targets passed.
 - `git diff --check`: passed.
 - Local browser layout check at 1280×720: settings/diagnostic controls rendered without horizontal overflow.
 
 The Rust build retains one pre-existing dead-code warning for `enclosing_definition`; it does not fail tests.
 
-An independent code review was completed before branch handoff. Its blocking and important findings were addressed by removing updater secrets from PR builds, pinning Actions to immutable commits, verifying Authenticode certificate fingerprints, retrying legacy-key migration during workspace restore/settings/AI use, allowlisting every serialized diagnostic string, rejecting conflicting key updates, and making the CSP check exact. Diagnostic export now uses a temporary file plus atomic no-clobber persistence, and export remains disabled until the user previews the report.
+An independent code review was completed before branch handoff. Its blocking and important findings were addressed by removing updater secrets from PR builds, pinning Actions to immutable commits, verifying Authenticode certificate fingerprints, retrying legacy-key migration during workspace restore/settings/AI use, preserving AppData-first precedence when old credential sources conflict, allowlisting every serialized diagnostic string, rejecting conflicting key updates, and making the CSP check exact. Diagnostic export now uses a temporary file plus atomic no-clobber persistence, and export remains disabled until the user previews the report.
 
 ## External verification still required
 
