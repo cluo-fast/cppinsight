@@ -24,6 +24,20 @@ const config = JSON.parse(readFileSync(configPath, "utf8"));
 requireValue(config.productName === "CppInsight AI", "unexpected productName");
 requireValue(config.identifier === "ai.cppinsight.desktop", "unexpected identifier");
 requireValue(/^\d+\.\d+\.\d+$/.test(config.version), "version must be semver");
+requireValue(config.build?.beforeDevCommand === "pnpm run dev", "beforeDevCommand must use pnpm");
+requireValue(config.build?.beforeBuildCommand === "pnpm run build", "beforeBuildCommand must use pnpm");
+requireValue(
+  typeof config.app?.security?.csp === "string" && config.app.security.csp.length > 0,
+  "desktop CSP must be enabled"
+);
+
+const capabilityPath = path.join(tauriRoot, "capabilities", "default.json");
+const capability = JSON.parse(readFileSync(capabilityPath, "utf8"));
+const expectedPermissions = ["core:default", "core:event:default", "dialog:default"];
+requireValue(
+  JSON.stringify(capability.permissions) === JSON.stringify(expectedPermissions),
+  `desktop permissions must match the reviewed allowlist: ${expectedPermissions.join(", ")}`
+);
 
 for (const relative of config.bundle?.icon ?? []) {
   requireValue(!relative.includes("@example."), `suspicious icon path: ${relative}`);
