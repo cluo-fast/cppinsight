@@ -73,6 +73,29 @@ if (existsSync(windowsWorkflowPath)) {
   failures.push("missing Windows CI workflow: .github/workflows/windows-ci.yml");
 }
 
+function requireTextMarkers(filePath, label, markers) {
+  if (!existsSync(filePath)) {
+    failures.push(`missing ${label}: ${path.relative(root, filePath)}`);
+    return;
+  }
+  const content = readFileSync(filePath, "utf8");
+  for (const marker of markers) {
+    requireValue(content.includes(marker), `${label} is missing: ${marker}`);
+  }
+}
+
+requireTextMarkers(path.join(root, "README.md"), "root README", [
+  "项目接手报告",
+  "关系图",
+  "MCP",
+  "隐私",
+  "启动CppInsight.bat"
+]);
+requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
+  "scripts/package-app.ps1",
+  "docs/releasing-windows.md"
+]);
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exit(1);
