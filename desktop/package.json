@@ -2,10 +2,12 @@
   "name": "cppinsight-ai-desktop",
   "private": true,
   "version": "0.1.0",
+  "packageManager": "pnpm@11.19.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "verify:release": "node ../scripts/verify-release-config.mjs --allow-generated-scanner",
     "preview": "vite preview",
     "tauri": "tauri"
   },

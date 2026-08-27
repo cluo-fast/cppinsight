@@ -28,14 +28,24 @@ function Assert-Command([string]$Name, [string]$Hint) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) { throw $Hint }
 }
 
-function Get-CliPath { Join-Path $Root "build\cppinsight.exe" }
+function Get-CliPath {
+    foreach ($candidate in @(
+        (Join-Path $Root "build\Release\cppinsight.exe"),
+        (Join-Path $Root "build\cppinsight.exe")
+    )) {
+        if (Test-Path -LiteralPath $candidate) { return $candidate }
+    }
+    return (Join-Path $Root "build\Release\cppinsight.exe")
+}
 function Get-AppExe { Join-Path $Root "desktop\src-tauri\target\release\cppinsight-ai.exe" }
 
 function Ensure-CppInsightCli {
     $cli = Get-CliPath
     if (-not (Test-Path -LiteralPath $cli)) {
         Write-Log "Building C++ scanner (first run may take a while)..."
-        & cmd /c "`"$(Join-Path $PSScriptRoot 'build-cpp.bat')`""
+        cmake -S $Root -B (Join-Path $Root "build")
+        if ($LASTEXITCODE -ne 0) { throw "CMake configure failed" }
+        cmake --build (Join-Path $Root "build") --config Release
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $cli)) {
             throw "Failed to build cppinsight.exe"
         }
@@ -53,9 +63,9 @@ function Ensure-NodeDeps {
     Push-Location $desktop
     try {
         if (-not (Test-Path -LiteralPath (Join-Path $desktop "node_modules"))) {
-            Write-Log "Installing desktop dependencies via npm..."
-            npm install --no-fund --no-audit | ForEach-Object { Write-Host $_ }
-            if ($LASTEXITCODE -ne 0) { throw "npm install failed" }
+            Write-Log "Installing desktop dependencies via pnpm..."
+            pnpm install --frozen-lockfile | ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
         }
     } finally {
         Pop-Location
@@ -80,10 +90,10 @@ function Ensure-ReleaseApp {
             # piping 2>&1 turns those NativeCommandError records into terminating errors.
             # Run via cmd so stderr is plain text and only the exit code matters.
             $buildLog = Join-Path $LogDir "tauri-build.log"
-            cmd /c "npx tauri build --no-bundle > `"$buildLog`" 2>&1"
+            cmd /c "pnpm tauri build --no-bundle > `"$buildLog`" 2>&1"
             Get-Content -LiteralPath $buildLog -ErrorAction SilentlyContinue | ForEach-Object { Write-Host $_ }
             if ($LASTEXITCODE -ne 0) {
-                throw "npx tauri build --no-bundle failed (exit=$LASTEXITCODE). See $buildLog"
+                throw "pnpm tauri build --no-bundle failed (exit=$LASTEXITCODE). See $buildLog"
             }
             if (-not (Test-Path -LiteralPath $appExe)) { throw "Desktop exe missing after build: $appExe" }
             Set-Content -Path $stamp -Value (Get-Date).ToString("o") -Encoding UTF8
@@ -111,7 +121,8 @@ try {
     Write-Log "CppInsight launch start"
     Ensure-PathTooling
     Assert-Command "node" "node not found. Install Node.js first."
-    Assert-Command "npm" "npm not found. Install Node.js first."
+    Assert-Command "pnpm" "pnpm not found. Install pnpm first."
+    Assert-Command "cmake" "cmake not found. Install CMake first."
     Assert-Command "cargo" "cargo not found. Install Rust from https://rustup.rs"
 
     Write-Log "[1/3] Prepare scanner"
