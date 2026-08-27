@@ -181,6 +181,26 @@ export interface UpdateOpenAiSettings {
   clear_api_key: boolean;
 }
 
+export interface DiagnosticProject {
+  project_id: string;
+  index_status: string;
+  file_count: number;
+  symbol_count: number;
+  include_count: number;
+  conversation_count: number;
+  mode: string;
+  confidence: string;
+}
+
+export interface DiagnosticReport {
+  schema_version: number;
+  generated_at: string;
+  app_version: string;
+  platform: { os: string; arch: string };
+  redaction_notice: string;
+  projects: DiagnosticProject[];
+}
+
 export interface PersistedMessage {
   id: string;
   role: string;

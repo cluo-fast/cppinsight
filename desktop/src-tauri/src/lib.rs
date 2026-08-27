@@ -1,4 +1,5 @@
 mod commands;
+pub mod diagnostics;
 pub mod secrets;
 pub mod workspace;
 
@@ -3131,6 +3132,8 @@ pub fn run() {
             commands::load_project_chats,
             commands::get_openai_settings,
             commands::set_openai_settings,
+            commands::preview_diagnostics,
+            commands::export_diagnostics,
             commands::ask_project,
             commands::export_client_summary,
             commands::inspect_symbol

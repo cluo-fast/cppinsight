@@ -1,3 +1,4 @@
+use crate::diagnostics::{build_report, write_report, DiagnosticProjectInput, DiagnosticReport};
 use crate::{
     app_data_dir_from_app,
     workspace::{
@@ -17,6 +18,55 @@ use crate::{
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
+
+fn collect_diagnostic_report(app: &tauri::AppHandle) -> Result<DiagnosticReport, String> {
+    let app_data = app_data_dir_from_app(app)?;
+    let workspace_path = workspace_db_path(&app_data);
+    let snapshot = load_workspace_snapshot(&workspace_path)?;
+    let mut projects = Vec::with_capacity(snapshot.open_projects.len());
+
+    for project in &snapshot.open_projects {
+        let root = PathBuf::from(&project.root_path);
+        let db_path = project_index_db_path(&root);
+        let conversation_count = snapshot
+            .chats
+            .iter()
+            .filter(|chat| chat.root_key == project.root_key)
+            .count() as u64;
+        let mut diagnostic = DiagnosticProjectInput {
+            root_path: project.root_path.clone(),
+            index_status: "missing".to_string(),
+            file_count: 0,
+            symbol_count: 0,
+            include_count: 0,
+            conversation_count,
+            mode: "unknown".to_string(),
+            confidence: "unknown".to_string(),
+        };
+
+        match try_load_indexed_project_at(&root, &db_path) {
+            Ok(Some(overview)) => {
+                diagnostic.index_status = "ready".to_string();
+                diagnostic.file_count = overview.file_count;
+                diagnostic.symbol_count = overview.symbol_count;
+                diagnostic.include_count = overview.include_count;
+                diagnostic.mode = overview.mode;
+                diagnostic.confidence = overview.confidence;
+            }
+            Ok(None) => {}
+            Err(_) => diagnostic.index_status = "unavailable".to_string(),
+        }
+        projects.push(diagnostic);
+    }
+
+    Ok(build_report(
+        &chrono::Utc::now().to_rfc3339(),
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        projects,
+    ))
+}
 
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedWorkspace {
@@ -202,6 +252,19 @@ pub fn set_openai_settings(
 ) -> Result<(), String> {
     let settings_path = settings_db_path_from_app(&app)?;
     set_openai_settings_at(&settings_path, &settings)
+}
+
+#[tauri::command]
+pub fn preview_diagnostics(app: tauri::AppHandle) -> Result<DiagnosticReport, String> {
+    collect_diagnostic_report(&app)
+}
+
+#[tauri::command]
+pub fn export_diagnostics(app: tauri::AppHandle, path: String) -> Result<String, String> {
+    let target = PathBuf::from(path);
+    let report = collect_diagnostic_report(&app)?;
+    write_report(&target, &report)?;
+    Ok(target.to_string_lossy().to_string())
 }
 
 #[tauri::command]

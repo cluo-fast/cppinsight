@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   askProject,
   chooseProjectDirectory,
+  exportDiagnostics,
   exportClientSummary,
   formatIndexProgress,
   getOpenAiSettings,
@@ -11,6 +12,7 @@ import {
   loadIndexedProject,
   loadProjectChats,
   loadWorkspace,
+  previewDiagnostics,
   saveWorkspace,
   setOpenAiSettings
 } from "./api";
@@ -229,6 +231,8 @@ export default function App() {
   const [aiSettings, setAiSettings] = useState<OpenAiSettings>(DEFAULT_AI_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [settingsSaving, setSettingsSaving] = useState(false);
+  const [diagnosticBusy, setDiagnosticBusy] = useState(false);
+  const [diagnosticPreview, setDiagnosticPreview] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
 
   const sessionsRef = useRef(sessions);
@@ -759,6 +763,34 @@ export default function App() {
   const indexBlocked = Boolean(active?.indexMissing);
   const composerLocked = chatBusy || indexBlocked || projectIndexing;
 
+  async function showDiagnosticPreview() {
+    setDiagnosticBusy(true);
+    setError(null);
+    try {
+      const report = await previewDiagnostics();
+      setDiagnosticPreview(JSON.stringify(report, null, 2));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiagnosticBusy(false);
+    }
+  }
+
+  async function saveDiagnosticReport() {
+    setDiagnosticBusy(true);
+    setError(null);
+    try {
+      const path = await exportDiagnostics();
+      if (path) {
+        setStatus(`脱敏诊断已导出：${path}`);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDiagnosticBusy(false);
+    }
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -900,7 +932,27 @@ export default function App() {
             >
               保存
             </button>
+            <button
+              className="secondary"
+              disabled={diagnosticBusy}
+              onClick={() => void showDiagnosticPreview()}
+            >
+              预览脱敏诊断
+            </button>
+            <button
+              className="secondary"
+              disabled={diagnosticBusy}
+              onClick={() => void saveDiagnosticReport()}
+            >
+              导出诊断 JSON
+            </button>
           </div>
+          {diagnosticPreview ? (
+            <div className="diagnostic-preview">
+              <p>仅包含版本、平台和项目聚合计数；不包含源码、路径、聊天内容或 API Key。</p>
+              <pre>{diagnosticPreview}</pre>
+            </div>
+          ) : null}
         </section>
       ) : null}
 

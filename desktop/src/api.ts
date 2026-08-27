@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AskResponse,
+  DiagnosticReport,
   IndexProgressEvent,
   InspectSymbolResponse,
   LoadedWorkspace,
@@ -65,6 +66,22 @@ export function getOpenAiSettings(): Promise<PublicOpenAiSettings> {
 
 export function setOpenAiSettings(settings: UpdateOpenAiSettings): Promise<void> {
   return invoke<void>("set_openai_settings", { settings });
+}
+
+export function previewDiagnostics(): Promise<DiagnosticReport> {
+  return invoke<DiagnosticReport>("preview_diagnostics");
+}
+
+export async function exportDiagnostics(): Promise<string | null> {
+  const path = await save({
+    title: "Export redacted diagnostics",
+    defaultPath: "cppinsight-diagnostics.json",
+    filters: [{ name: "JSON", extensions: ["json"] }]
+  });
+  if (typeof path !== "string") {
+    return null;
+  }
+  return invoke<string>("export_diagnostics", { path });
 }
 
 export function askProject(
