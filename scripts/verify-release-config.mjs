@@ -55,6 +55,24 @@ for (const relative of config.bundle?.resources ?? []) {
 requireFile(path.join(root, "scripts", "package-app.ps1"), "package script");
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
 
+const windowsWorkflowPath = path.join(root, ".github", "workflows", "windows-ci.yml");
+if (existsSync(windowsWorkflowPath)) {
+  const workflow = readFileSync(windowsWorkflowPath, "utf8");
+  for (const marker of [
+    "windows-latest",
+    "ctest",
+    "cargo test",
+    "pnpm run build",
+    "pnpm tauri build",
+    "actions/upload-artifact@v4",
+    "Get-FileHash"
+  ]) {
+    requireValue(workflow.includes(marker), `Windows CI workflow is missing: ${marker}`);
+  }
+} else {
+  failures.push("missing Windows CI workflow: .github/workflows/windows-ci.yml");
+}
+
 if (failures.length > 0) {
   console.error(failures.join("\n"));
   process.exit(1);

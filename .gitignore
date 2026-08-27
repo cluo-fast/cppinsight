@@ -10,6 +10,12 @@
 /desktop/src-tauri/gen/
 /desktop/src-tauri/resources/cppinsight.exe
 /desktop/src-tauri/resources/*.exe
+/desktop/src-tauri/tauri.windows-signing.conf.json
+/certificate/
+*.pfx
+*.p12
+*.cer
+*.key
 *.sqlite
 .DS_Store
 CMakeUserPresets.json
