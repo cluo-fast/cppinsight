@@ -1,4 +1,5 @@
 mod commands;
+pub mod secrets;
 pub mod workspace;
 
 use chrono::Utc;
@@ -220,9 +221,8 @@ pub struct SearchContext {
 }
 
 fn read_text_lossy(path: &Path) -> Result<String, String> {
-    let bytes = fs::read(path).map_err(|error| {
-        format!("failed to read {}: {error}", path.display())
-    })?;
+    let bytes =
+        fs::read(path).map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
@@ -278,7 +278,8 @@ pub async fn ask_project_at_with_settings(
 
     if ai_settings.api_key.trim().is_empty() {
         return Ok(AskResponse {
-            answer: "OpenAI API key is not configured. Set it in Settings, or via OPENAI_API_KEY.".to_string(),
+            answer: "OpenAI API key is not configured. Set it in Settings, or via OPENAI_API_KEY."
+                .to_string(),
             citations: contexts_to_citations(&contexts),
         });
     }
@@ -391,7 +392,9 @@ fn find_legacy_project_id(connection: &Connection, root: &str) -> Result<Option<
         .prepare("SELECT id, root FROM projects")
         .map_err(sql_error)?;
     let rows = statement
-        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(sql_error)?;
     for row in rows {
         let (id, stored_root) = row.map_err(sql_error)?;
@@ -470,19 +473,34 @@ fn copy_project_between_dbs(
         .map_err(sql_error)?;
 
     destination
-        .execute("DELETE FROM files WHERE project_id = ?1", params![dest_project_id])
+        .execute(
+            "DELETE FROM files WHERE project_id = ?1",
+            params![dest_project_id],
+        )
         .map_err(sql_error)?;
     destination
-        .execute("DELETE FROM symbols WHERE project_id = ?1", params![dest_project_id])
+        .execute(
+            "DELETE FROM symbols WHERE project_id = ?1",
+            params![dest_project_id],
+        )
         .map_err(sql_error)?;
     destination
-        .execute("DELETE FROM includes WHERE project_id = ?1", params![dest_project_id])
+        .execute(
+            "DELETE FROM includes WHERE project_id = ?1",
+            params![dest_project_id],
+        )
         .map_err(sql_error)?;
     destination
-        .execute("DELETE FROM calls WHERE project_id = ?1", params![dest_project_id])
+        .execute(
+            "DELETE FROM calls WHERE project_id = ?1",
+            params![dest_project_id],
+        )
         .map_err(sql_error)?;
     destination
-        .execute("DELETE FROM chunks WHERE project_id = ?1", params![dest_project_id])
+        .execute(
+            "DELETE FROM chunks WHERE project_id = ?1",
+            params![dest_project_id],
+        )
         .map_err(sql_error)?;
 
     {
@@ -508,8 +526,17 @@ fn copy_project_between_dbs(
             })
             .map_err(sql_error)?;
         for row in rows {
-            let (path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix) =
-                row.map_err(sql_error)?;
+            let (
+                path,
+                extension,
+                category,
+                size_bytes,
+                total_lines,
+                code_lines,
+                comment_lines,
+                blank_lines,
+                mtime_unix,
+            ) = row.map_err(sql_error)?;
             destination
                 .execute(
                     "INSERT INTO files(project_id, path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix)
@@ -608,9 +635,7 @@ fn copy_project_between_dbs(
 
     if table_exists(source, "calls")? {
         let mut statement = source
-            .prepare(
-                "SELECT file, line, name, confidence FROM calls WHERE project_id = ?1",
-            )
+            .prepare("SELECT file, line, name, confidence FROM calls WHERE project_id = ?1")
             .map_err(sql_error)?;
         let rows = statement
             .query_map(params![source_project_id], |row| {
@@ -636,9 +661,7 @@ fn copy_project_between_dbs(
 
     {
         let mut statement = source
-            .prepare(
-                "SELECT file, start_line, end_line, text FROM chunks WHERE project_id = ?1",
-            )
+            .prepare("SELECT file, start_line, end_line, text FROM chunks WHERE project_id = ?1")
             .map_err(sql_error)?;
         let rows = statement
             .query_map(params![source_project_id], |row| {
@@ -671,18 +694,22 @@ fn settings_table_api_key(connection: &Connection) -> Result<Option<String>, Str
 
 fn migrate_api_key_once(legacy: &Connection, settings_db: &Path) -> Result<(), String> {
     let settings = open_database_at(settings_db)?;
-    if settings_table_api_key(&settings)?.is_some() {
-        return Ok(());
+    migrate_api_key_once_with_backend(legacy, &settings, &secrets::OsSecretBackend)
+}
+
+fn migrate_api_key_once_with_backend(
+    legacy: &Connection,
+    settings: &Connection,
+    backend: &dyn secrets::SecretBackend,
+) -> Result<(), String> {
+    secrets::migrate_legacy_api_key(settings, backend)?;
+    if backend.get(secrets::OPENAI_ACCOUNT)?.is_none() {
+        if let Some(secret) = settings_table_api_key(legacy)? {
+            backend.set(secrets::OPENAI_ACCOUNT, &secret)?;
+        }
     }
-    let Some(trimmed) = settings_table_api_key(legacy)? else {
-        return Ok(());
-    };
-    settings
-        .execute(
-            "INSERT INTO settings(key, value) VALUES('openai_api_key', ?1)
-             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-            params![trimmed],
-        )
+    legacy
+        .execute("DELETE FROM settings WHERE key = 'openai_api_key'", [])
         .map_err(sql_error)?;
     Ok(())
 }
@@ -833,11 +860,7 @@ fn summarize_cli_stderr(stderr_lines: &[String]) -> String {
     if errors.is_empty() {
         return "no stderr details".to_string();
     }
-    errors
-        .into_iter()
-        .take(6)
-        .collect::<Vec<_>>()
-        .join(" | ")
+    errors.into_iter().take(6).collect::<Vec<_>>().join(" | ")
 }
 
 pub fn run_scan_with_progress(
@@ -861,12 +884,7 @@ pub fn run_scan_with_progress(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|error| {
-            format!(
-                "failed to run cppinsight CLI ({}): {error}",
-                cli.display()
-            )
-        })?;
+        .map_err(|error| format!("failed to run cppinsight CLI ({}): {error}", cli.display()))?;
 
     let mut stderr_lines = Vec::new();
     if let Some(stderr) = child.stderr.take() {
@@ -1152,23 +1170,42 @@ pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64
         .map_err(sql_error)?;
 
     let project_id: i64 = transaction
-        .query_row("SELECT id FROM projects WHERE root = ?1", params![scan.root], |row| row.get(0))
+        .query_row(
+            "SELECT id FROM projects WHERE root = ?1",
+            params![scan.root],
+            |row| row.get(0),
+        )
         .map_err(sql_error)?;
 
     transaction
-        .execute("DELETE FROM files WHERE project_id = ?1", params![project_id])
+        .execute(
+            "DELETE FROM files WHERE project_id = ?1",
+            params![project_id],
+        )
         .map_err(sql_error)?;
     transaction
-        .execute("DELETE FROM symbols WHERE project_id = ?1", params![project_id])
+        .execute(
+            "DELETE FROM symbols WHERE project_id = ?1",
+            params![project_id],
+        )
         .map_err(sql_error)?;
     transaction
-        .execute("DELETE FROM includes WHERE project_id = ?1", params![project_id])
+        .execute(
+            "DELETE FROM includes WHERE project_id = ?1",
+            params![project_id],
+        )
         .map_err(sql_error)?;
     transaction
-        .execute("DELETE FROM calls WHERE project_id = ?1", params![project_id])
+        .execute(
+            "DELETE FROM calls WHERE project_id = ?1",
+            params![project_id],
+        )
         .map_err(sql_error)?;
     transaction
-        .execute("DELETE FROM chunks WHERE project_id = ?1", params![project_id])
+        .execute(
+            "DELETE FROM chunks WHERE project_id = ?1",
+            params![project_id],
+        )
         .map_err(sql_error)?;
 
     for file in &scan.files {
@@ -1266,7 +1303,10 @@ pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64
     Ok(project_id)
 }
 
-pub(crate) fn overview_from_scan(project_id: i64, scan: &ScanResult) -> Result<ProjectOverview, String> {
+pub(crate) fn overview_from_scan(
+    project_id: i64,
+    scan: &ScanResult,
+) -> Result<ProjectOverview, String> {
     let mut hotspots = scan
         .files
         .iter()
@@ -1274,7 +1314,11 @@ pub(crate) fn overview_from_scan(project_id: i64, scan: &ScanResult) -> Result<P
             path: file.path.clone(),
             total_lines: file.lines.total,
             code_lines: file.lines.code,
-            symbol_count: scan.symbols.iter().filter(|symbol| symbol.file == file.path).count() as u64,
+            symbol_count: scan
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.file == file.path)
+                .count() as u64,
         })
         .collect::<Vec<_>>();
     hotspots.sort_by(|left, right| right.code_lines.cmp(&left.code_lines));
@@ -1311,17 +1355,20 @@ pub(crate) fn overview_from_scan(project_id: i64, scan: &ScanResult) -> Result<P
     })
 }
 
-pub fn load_project_overview(connection: &Connection, project_id: i64) -> Result<ProjectOverview, String> {
-    let (root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence): (
-        String,
-        String,
-        u64,
-        u64,
-        u64,
-        String,
-        String,
-        String,
-    ) = connection
+pub fn load_project_overview(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<ProjectOverview, String> {
+    let (
+        root,
+        indexed_at,
+        file_count,
+        symbol_count,
+        include_count,
+        diagnostics_json,
+        mode,
+        confidence,
+    ): (String, String, u64, u64, u64, String, String, String) = connection
         .query_row(
             "SELECT root, indexed_at, file_count, symbol_count, include_count, diagnostics_json,
                     COALESCE(mode, 'heuristic'), COALESCE(confidence, 'heuristic')
@@ -1427,7 +1474,10 @@ fn load_group_counts(
     Ok(counts)
 }
 
-fn load_top_level_layout(connection: &Connection, project_id: i64) -> Result<BTreeMap<String, u64>, String> {
+fn load_top_level_layout(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<BTreeMap<String, u64>, String> {
     let mut statement = connection
         .prepare("SELECT path FROM files WHERE project_id = ?1")
         .map_err(sql_error)?;
@@ -1444,7 +1494,10 @@ fn load_top_level_layout(connection: &Connection, project_id: i64) -> Result<BTr
     Ok(counts)
 }
 
-fn load_second_level_layout(connection: &Connection, project_id: i64) -> Result<BTreeMap<String, u64>, String> {
+fn load_second_level_layout(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<BTreeMap<String, u64>, String> {
     let mut statement = connection
         .prepare("SELECT path FROM files WHERE project_id = ?1")
         .map_err(sql_error)?;
@@ -1502,7 +1555,11 @@ fn load_hotspots(connection: &Connection, project_id: i64) -> Result<Vec<HotFile
     Ok(hotspots)
 }
 
-fn load_symbols(connection: &Connection, project_id: i64, limit: i64) -> Result<Vec<SymbolInfo>, String> {
+fn load_symbols(
+    connection: &Connection,
+    project_id: i64,
+    limit: i64,
+) -> Result<Vec<SymbolInfo>, String> {
     let mut statement = connection
         .prepare(
             "SELECT file, line, kind, name, signature, scope, is_definition, COALESCE(confidence, 'heuristic')
@@ -1602,10 +1659,7 @@ fn build_chunks(scan: &ScanResult) -> Result<Vec<SearchContext>, String> {
 }
 
 fn top_level_dir(path: &str) -> String {
-    path.split(['/', '\\'])
-        .next()
-        .unwrap_or(".")
-        .to_string()
+    path.split(['/', '\\']).next().unwrap_or(".").to_string()
 }
 
 fn is_overview_question(question: &str) -> bool {
@@ -1711,9 +1765,10 @@ fn select_diverse_contexts(mut ranked: Vec<SearchContext>, limit: usize) -> Vec<
             if selected.len() >= limit {
                 break;
             }
-            if selected.iter().any(|item| {
-                item.file == context.file && item.start_line == context.start_line
-            }) {
+            if selected
+                .iter()
+                .any(|item| item.file == context.file && item.start_line == context.start_line)
+            {
                 continue;
             }
             selected.push(context);
@@ -1987,9 +2042,7 @@ fn expand_graph_locations(
 
     if !seed_files.is_empty() {
         let mut include_statement = connection
-            .prepare(
-                "SELECT file, line, resolved_path FROM includes WHERE project_id = ?1",
-            )
+            .prepare("SELECT file, line, resolved_path FROM includes WHERE project_id = ?1")
             .map_err(sql_error)?;
         let include_rows = include_statement
             .query_map(params![project_id], |row| {
@@ -2541,15 +2594,17 @@ pub fn inspect_symbol_at(
     let Some(target_name) = resolve_inspect_target(&candidates, trimmed) else {
         return Ok(InspectSymbolResponse {
             query: trimmed.to_string(),
-            message: format!("找到多个候选符号，请输入更精确的名称（当前显示前 {} 个）。", candidates.len()),
+            message: format!(
+                "找到多个候选符号，请输入更精确的名称（当前显示前 {} 个）。",
+                candidates.len()
+            ),
             candidates,
             report: None,
         });
     };
 
     let definitions = load_definitions_for_name(connection, project_id, &target_name)?;
-    let callers =
-        collect_impact_neighbors(connection, project_id, &target_name, true, depth, 40)?;
+    let callers = collect_impact_neighbors(connection, project_id, &target_name, true, depth, 40)?;
     let mut callees =
         collect_impact_neighbors(connection, project_id, &target_name, false, depth, 40)?;
     for callee in &mut callees {
@@ -2586,7 +2641,9 @@ pub fn inspect_symbol_at(
 pub fn tokenize(question: &str) -> Vec<String> {
     let mut tokens = HashSet::new();
     // Prefer ASCII identifiers — they match source paths/symbols. Pure CJK phrases rarely help.
-    for raw in question.split(|character: char| !character.is_ascii_alphanumeric() && character != '_') {
+    for raw in
+        question.split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
+    {
         let token = raw.trim().to_lowercase();
         if token.len() >= 3 {
             tokens.insert(token);
@@ -2595,7 +2652,11 @@ pub fn tokenize(question: &str) -> Vec<String> {
     tokens.into_iter().collect()
 }
 
-pub fn score_context(context: &SearchContext, tokens: &[String], symbol_names: &HashSet<String>) -> i64 {
+pub fn score_context(
+    context: &SearchContext,
+    tokens: &[String],
+    symbol_names: &HashSet<String>,
+) -> i64 {
     let file = context.file.to_lowercase();
     let text = context.text.to_lowercase();
     let mut score = 0_i64;
@@ -2626,16 +2687,43 @@ fn contexts_to_citations(contexts: &[SearchContext]) -> Vec<Citation> {
         .map(|context| Citation {
             file: context.file.clone(),
             line: context.start_line,
-            title: format!("{}:{}-{}", context.file, context.start_line, context.end_line),
+            title: format!(
+                "{}:{}-{}",
+                context.file, context.start_line, context.end_line
+            ),
         })
         .collect()
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct OpenAiSettings {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PublicOpenAiSettings {
+    pub base_url: String,
+    pub model: String,
+    pub api_key_configured: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateOpenAiSettings {
+    pub base_url: String,
+    pub model: String,
+    pub api_key: Option<String>,
+    #[serde(default)]
+    pub clear_api_key: bool,
+}
+
+pub fn public_openai_settings(settings: &OpenAiSettings) -> PublicOpenAiSettings {
+    PublicOpenAiSettings {
+        base_url: settings.base_url.clone(),
+        model: settings.model.clone(),
+        api_key_configured: !settings.api_key.trim().is_empty(),
+    }
 }
 
 impl Default for OpenAiSettings {
@@ -2696,9 +2784,18 @@ pub fn read_openai_api_key(connection: &Connection) -> Result<Option<String>, St
 }
 
 pub fn read_openai_settings(connection: &Connection) -> Result<OpenAiSettings, String> {
+    read_openai_settings_with_backend(connection, &secrets::OsSecretBackend)
+}
+
+pub fn read_openai_settings_with_backend(
+    connection: &Connection,
+    backend: &dyn secrets::SecretBackend,
+) -> Result<OpenAiSettings, String> {
+    secrets::migrate_legacy_api_key(connection, backend)?;
     let mut settings = OpenAiSettings::default();
 
-    if let Ok(value) = std::env::var("OPENAI_BASE_URL").or_else(|_| std::env::var("OPENAI_API_BASE"))
+    if let Ok(value) =
+        std::env::var("OPENAI_BASE_URL").or_else(|_| std::env::var("OPENAI_API_BASE"))
     {
         let trimmed = value.trim().trim_end_matches('/').to_string();
         if !trimmed.is_empty() {
@@ -2713,7 +2810,7 @@ pub fn read_openai_settings(connection: &Connection) -> Result<OpenAiSettings, S
         if !trimmed.is_empty() {
             settings.api_key = trimmed;
         }
-    } else if let Some(value) = read_setting_value(connection, "openai_api_key")? {
+    } else if let Some(value) = backend.get(secrets::OPENAI_ACCOUNT)? {
         settings.api_key = value;
     }
 
@@ -2731,11 +2828,18 @@ pub fn read_openai_settings(connection: &Connection) -> Result<OpenAiSettings, S
 
 pub fn set_api_key_at(db_path: &Path, api_key: &str) -> Result<(), String> {
     let connection = open_database_at(db_path)?;
-    upsert_setting_value(&connection, "openai_api_key", api_key.trim())
+    let backend = secrets::OsSecretBackend;
+    secrets::migrate_legacy_api_key(&connection, &backend)?;
+    secrets::update_api_key(&backend, Some(api_key), false)
 }
 
-pub fn set_openai_settings_at(db_path: &Path, settings: &OpenAiSettings) -> Result<(), String> {
+pub fn set_openai_settings_at(
+    db_path: &Path,
+    settings: &UpdateOpenAiSettings,
+) -> Result<(), String> {
     let connection = open_database_at(db_path)?;
+    let backend = secrets::OsSecretBackend;
+    secrets::migrate_legacy_api_key(&connection, &backend)?;
     let base_url = settings.base_url.trim().trim_end_matches('/');
     let base_url = if base_url.is_empty() {
         default_openai_base_url()
@@ -2750,8 +2854,12 @@ pub fn set_openai_settings_at(db_path: &Path, settings: &OpenAiSettings) -> Resu
     };
 
     upsert_setting_value(&connection, "openai_base_url", &base_url)?;
-    upsert_setting_value(&connection, "openai_api_key", settings.api_key.trim())?;
     upsert_setting_value(&connection, "openai_model", &model)?;
+    secrets::update_api_key(
+        &backend,
+        settings.api_key.as_deref(),
+        settings.clear_api_key,
+    )?;
     Ok(())
 }
 
@@ -2771,7 +2879,11 @@ pub fn list_projects(db_path: &Path) -> Result<Vec<(i64, String, String)>, Strin
         .map_err(sql_error)?;
     let rows = statement
         .query_map([], |row| {
-            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?))
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })
         .map_err(sql_error)?;
 
@@ -2788,7 +2900,9 @@ fn find_project_id_normalized(connection: &Connection, root: &str) -> Result<Opt
         .prepare("SELECT id, root FROM projects ORDER BY id DESC")
         .map_err(sql_error)?;
     let rows = statement
-        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))
+        .query_map([], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })
         .map_err(sql_error)?;
     for row in rows {
         let (id, stored_root) = row.map_err(sql_error)?;
@@ -2808,7 +2922,10 @@ pub fn find_project_id_by_root(db_path: &Path, root: &str) -> Result<i64, String
 }
 
 /// Load overview from an existing project-local index, if present.
-pub fn try_load_indexed_project_at(root: &Path, db_path: &Path) -> Result<Option<ProjectOverview>, String> {
+pub fn try_load_indexed_project_at(
+    root: &Path,
+    db_path: &Path,
+) -> Result<Option<ProjectOverview>, String> {
     if !db_path.exists() {
         return Ok(None);
     }
@@ -2826,9 +2943,11 @@ pub fn try_load_indexed_project_at(root: &Path, db_path: &Path) -> Result<Option
         .map_err(sql_error)?;
     if count == 1 {
         let project_id: i64 = connection
-            .query_row("SELECT id FROM projects ORDER BY id DESC LIMIT 1", [], |row| {
-                row.get(0)
-            })
+            .query_row(
+                "SELECT id FROM projects ORDER BY id DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
             .map_err(sql_error)?;
         return Ok(Some(load_project_overview(&connection, project_id)?));
     }
@@ -2891,9 +3010,8 @@ pub fn parse_chat_completion_body(raw: &str) -> Result<String, String> {
     if !looks_like_sse(trimmed) {
         let value: serde_json::Value = serde_json::from_str(trimmed)
             .map_err(|error| format!("invalid JSON response: {error}"))?;
-        return extract_message_content(&value).ok_or_else(|| {
-            format!("OpenAI response did not include message content: {value}")
-        });
+        return extract_message_content(&value)
+            .ok_or_else(|| format!("OpenAI response did not include message content: {value}"));
     }
 
     let mut content = String::new();
@@ -3011,7 +3129,6 @@ pub fn run() {
             commands::load_workspace,
             commands::save_workspace,
             commands::load_project_chats,
-            commands::set_openai_api_key,
             commands::get_openai_settings,
             commands::set_openai_settings,
             commands::ask_project,
@@ -3024,8 +3141,96 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_scan_progress_line, score_context, tokenize, SearchContext};
+    use super::{
+        parse_scan_progress_line, public_openai_settings, read_openai_settings_with_backend,
+        score_context, tokenize, OpenAiSettings, SearchContext,
+    };
+    use crate::secrets::SecretBackend;
+    use std::collections::HashMap;
     use std::collections::{BTreeMap, HashSet};
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct TestSecretBackend {
+        values: Mutex<HashMap<String, String>>,
+    }
+
+    impl crate::secrets::SecretBackend for TestSecretBackend {
+        fn get(&self, account: &str) -> Result<Option<String>, String> {
+            Ok(self.values.lock().unwrap().get(account).cloned())
+        }
+
+        fn set(&self, account: &str, value: &str) -> Result<(), String> {
+            self.values
+                .lock()
+                .unwrap()
+                .insert(account.to_string(), value.to_string());
+            Ok(())
+        }
+
+        fn delete(&self, account: &str) -> Result<(), String> {
+            self.values.lock().unwrap().remove(account);
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn reading_ai_settings_migrates_plaintext_and_reads_secret_backend() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        super::migrate_database(&connection).unwrap();
+        super::upsert_setting_value(&connection, "openai_api_key", "sk-legacy").unwrap();
+        let backend = TestSecretBackend::default();
+
+        let settings = read_openai_settings_with_backend(&connection, &backend).unwrap();
+
+        assert_eq!(settings.api_key, "sk-legacy");
+        assert_eq!(
+            super::read_setting_value(&connection, "openai_api_key").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn legacy_database_migration_moves_secret_directly_to_backend() {
+        let legacy = rusqlite::Connection::open_in_memory().unwrap();
+        let settings = rusqlite::Connection::open_in_memory().unwrap();
+        super::migrate_database(&legacy).unwrap();
+        super::migrate_database(&settings).unwrap();
+        super::upsert_setting_value(&legacy, "openai_api_key", "sk-old-global").unwrap();
+        let backend = TestSecretBackend::default();
+
+        super::migrate_api_key_once_with_backend(&legacy, &settings, &backend).unwrap();
+
+        assert_eq!(
+            backend
+                .get(crate::secrets::OPENAI_ACCOUNT)
+                .unwrap()
+                .as_deref(),
+            Some("sk-old-global")
+        );
+        assert_eq!(
+            super::read_setting_value(&legacy, "openai_api_key").unwrap(),
+            None
+        );
+        assert_eq!(
+            super::read_setting_value(&settings, "openai_api_key").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn public_ai_settings_report_configuration_without_serializing_secret() {
+        let public = public_openai_settings(&OpenAiSettings {
+            base_url: "https://example.test/v1".to_string(),
+            api_key: "sk-never-return-this".to_string(),
+            model: "test-model".to_string(),
+        });
+        let json = serde_json::to_string(&public).unwrap();
+
+        assert!(public.api_key_configured);
+        assert!(!json.contains("sk-never-return-this"));
+        assert!(!json.contains("api_key\""));
+    }
 
     #[test]
     fn scores_file_symbol_and_text_matches() {
@@ -3058,7 +3263,9 @@ mod tests {
     #[test]
     fn ignores_invalid_scan_progress_line() {
         assert!(parse_scan_progress_line("not a progress line").is_none());
-        assert!(parse_scan_progress_line("[scan] files=abc analyzed=1 reused=0 current=x").is_none());
+        assert!(
+            parse_scan_progress_line("[scan] files=abc analyzed=1 reused=0 current=x").is_none()
+        );
     }
 
     #[test]
@@ -3074,8 +3281,10 @@ mod tests {
     #[test]
     fn project_index_db_path_is_under_cppinsight_dir() {
         let path = super::project_index_db_path(std::path::Path::new("D:/repos/demo"));
-        assert!(path.ends_with(std::path::Path::new(".cppinsight/index.sqlite"))
-            || path.ends_with(std::path::Path::new(".cppinsight\\index.sqlite")));
+        assert!(
+            path.ends_with(std::path::Path::new(".cppinsight/index.sqlite"))
+                || path.ends_with(std::path::Path::new(".cppinsight\\index.sqlite"))
+        );
     }
 
     #[test]
@@ -3122,9 +3331,13 @@ data: [DONE]
 
     #[test]
     fn detects_overview_questions() {
-        assert!(super::is_overview_question("这个项目的顶层目录分别大概负责什么？"));
+        assert!(super::is_overview_question(
+            "这个项目的顶层目录分别大概负责什么？"
+        ));
         assert!(super::is_overview_question("project module layout"));
-        assert!(!super::is_overview_question("Where is encryptFile implemented?"));
+        assert!(!super::is_overview_question(
+            "Where is encryptFile implemented?"
+        ));
     }
 
     #[test]
@@ -3404,10 +3617,7 @@ data: [DONE]
             super::inspect_symbol_at(&connection, project_id, "encryptFile", Some(2)).unwrap();
         let report = response.report.expect("report");
         assert_eq!(report.symbol, "encryptFile");
-        assert!(report
-            .callers
-            .iter()
-            .any(|item| item.name == "runPipeline"));
+        assert!(report.callers.iter().any(|item| item.name == "runPipeline"));
         assert!(report.entry_paths.iter().any(|path| path.entry == "main"));
         assert!(report
             .entry_paths

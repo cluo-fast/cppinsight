@@ -5,10 +5,11 @@ import type {
   IndexProgressEvent,
   InspectSymbolResponse,
   LoadedWorkspace,
-  OpenAiSettings,
+  PublicOpenAiSettings,
   PersistedChat,
   ProjectOverview,
   ScanResult,
+  UpdateOpenAiSettings,
   WorkspaceSnapshot
 } from "./types";
 
@@ -58,15 +59,11 @@ export function getProjectOverview(root: string, projectId: number): Promise<Pro
   return invoke<ProjectOverview>("get_project_overview", { root, projectId });
 }
 
-export function setOpenAiApiKey(apiKey: string): Promise<void> {
-  return invoke<void>("set_openai_api_key", { apiKey });
+export function getOpenAiSettings(): Promise<PublicOpenAiSettings> {
+  return invoke<PublicOpenAiSettings>("get_openai_settings");
 }
 
-export function getOpenAiSettings(): Promise<OpenAiSettings> {
-  return invoke<OpenAiSettings>("get_openai_settings");
-}
-
-export function setOpenAiSettings(settings: OpenAiSettings): Promise<void> {
+export function setOpenAiSettings(settings: UpdateOpenAiSettings): Promise<void> {
   return invoke<void>("set_openai_settings", { settings });
 }
 

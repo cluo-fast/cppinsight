@@ -20,7 +20,6 @@ import type {
   ComposerMode,
   IndexProgressEvent,
   InspectSymbolResponse,
-  OpenAiSettings,
   PersistedChat,
   PersistedMessage,
   ProjectOverview,
@@ -32,7 +31,17 @@ import "./styles.css";
 const DEFAULT_AI_SETTINGS: OpenAiSettings = {
   base_url: "https://api.openai.com/v1",
   api_key: "",
-  model: "gpt-4o-mini"
+  model: "gpt-4o-mini",
+  api_key_configured: false,
+  clear_api_key: false
+};
+
+type OpenAiSettings = {
+  base_url: string;
+  api_key: string;
+  model: string;
+  api_key_configured: boolean;
+  clear_api_key: boolean;
 };
 
 type ChatThread = {
@@ -782,8 +791,10 @@ export default function App() {
                     const loaded = await getOpenAiSettings();
                     setAiSettings({
                       base_url: loaded.base_url || DEFAULT_AI_SETTINGS.base_url,
-                      api_key: loaded.api_key || "",
-                      model: loaded.model || DEFAULT_AI_SETTINGS.model
+                      api_key: "",
+                      model: loaded.model || DEFAULT_AI_SETTINGS.model,
+                      api_key_configured: loaded.api_key_configured,
+                      clear_api_key: false
                     });
                   } catch {
                     setAiSettings(DEFAULT_AI_SETTINGS);
@@ -819,13 +830,36 @@ export default function App() {
             <span>API Key</span>
             <input
               type="password"
-              placeholder="sk-... 或网关 Token"
+              placeholder={
+                aiSettings.api_key_configured
+                  ? "已安全保存；留空保持不变"
+                  : "sk-... 或网关 Token"
+              }
               value={aiSettings.api_key}
               onChange={(event) =>
                 setAiSettings((current) => ({ ...current, api_key: event.target.value }))
               }
             />
           </label>
+          {aiSettings.api_key_configured ? (
+            <label className="settings-field">
+              <span>已保存密钥</span>
+              <span>
+                <input
+                  type="checkbox"
+                  checked={aiSettings.clear_api_key}
+                  onChange={(event) =>
+                    setAiSettings((current) => ({
+                      ...current,
+                      clear_api_key: event.target.checked,
+                      api_key: event.target.checked ? "" : current.api_key
+                    }))
+                  }
+                />{" "}
+                清除操作系统凭据库中的 API Key
+              </span>
+            </label>
+          ) : null}
           <label className="settings-field">
             <span>Model</span>
             <input
@@ -840,7 +874,10 @@ export default function App() {
           <div className="settings-row">
             <button
               className="secondary"
-              disabled={settingsSaving || !aiSettings.api_key.trim()}
+              disabled={
+                settingsSaving ||
+                (!aiSettings.api_key_configured && !aiSettings.api_key.trim())
+              }
               onClick={() => {
                 void (async () => {
                   setSettingsSaving(true);
@@ -848,8 +885,9 @@ export default function App() {
                   try {
                     await setOpenAiSettings({
                       base_url: aiSettings.base_url.trim() || DEFAULT_AI_SETTINGS.base_url,
-                      api_key: aiSettings.api_key.trim(),
-                      model: aiSettings.model.trim() || DEFAULT_AI_SETTINGS.model
+                      api_key: aiSettings.api_key.trim() || null,
+                      model: aiSettings.model.trim() || DEFAULT_AI_SETTINGS.model,
+                      clear_api_key: aiSettings.clear_api_key
                     });
                     setShowSettings(false);
                   } catch (err) {

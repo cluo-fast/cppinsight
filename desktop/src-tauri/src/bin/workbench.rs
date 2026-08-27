@@ -174,7 +174,7 @@ async fn run(mut args: Vec<String>) -> Result<(), String> {
                 return Err("Missing API key.".to_string());
             }
             set_api_key_at(&db_path, &args[0])?;
-            println!("API key saved to {}", db_path.display());
+            println!("API key saved to operating-system credential store.");
             Ok(())
         }
         _ => {

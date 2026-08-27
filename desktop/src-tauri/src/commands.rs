@@ -1,17 +1,18 @@
 use crate::{
-    ask_project_at_with_settings, build_client_summary, emit_index_progress, index_db_path_for_root,
-    index_scan_json_at, inspect_symbol_at, load_project_overview, migrate_legacy_project_if_needed,
-    open_database_at, overview_from_scan, project_index_db_path, read_openai_settings, run_scan,
-    run_scan_with_progress, set_api_key_at, set_openai_settings_at, settings_db_path_from_app,
-    try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
-    InspectSymbolResponse, OpenAiSettings, ProjectOverview, ScanResult,
-};
-use crate::{
     app_data_dir_from_app,
     workspace::{
         load_chats_for_root_key, load_workspace_snapshot, save_workspace_snapshot,
         workspace_db_path, PersistedChat, WorkspaceSnapshot,
     },
+};
+use crate::{
+    ask_project_at_with_settings, build_client_summary, emit_index_progress,
+    index_db_path_for_root, index_scan_json_at, inspect_symbol_at, load_project_overview,
+    migrate_legacy_project_if_needed, open_database_at, overview_from_scan, project_index_db_path,
+    public_openai_settings, read_openai_settings, run_scan, run_scan_with_progress,
+    set_openai_settings_at, settings_db_path_from_app, try_load_indexed_project_at, write_index,
+    AskResponse, IndexProgressEvent, InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings,
+    ScanResult, UpdateOpenAiSettings,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -90,7 +91,10 @@ pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOvervi
 }
 
 #[tauri::command]
-pub fn index_scan_json(app: tauri::AppHandle, scan_json: String) -> Result<ProjectOverview, String> {
+pub fn index_scan_json(
+    app: tauri::AppHandle,
+    scan_json: String,
+) -> Result<ProjectOverview, String> {
     let json_text = std::fs::read_to_string(&scan_json)
         .map_err(|error| format!("failed to read scan JSON {scan_json}: {error}"))?;
     let scan: ScanResult = serde_json::from_str(&json_text)
@@ -185,20 +189,17 @@ pub fn load_project_chats(
 }
 
 #[tauri::command]
-pub fn set_openai_api_key(app: tauri::AppHandle, api_key: String) -> Result<(), String> {
-    let settings_path = settings_db_path_from_app(&app)?;
-    set_api_key_at(&settings_path, &api_key)
-}
-
-#[tauri::command]
-pub fn get_openai_settings(app: tauri::AppHandle) -> Result<OpenAiSettings, String> {
+pub fn get_openai_settings(app: tauri::AppHandle) -> Result<PublicOpenAiSettings, String> {
     let settings_path = settings_db_path_from_app(&app)?;
     let connection = open_database_at(&settings_path)?;
-    read_openai_settings(&connection)
+    read_openai_settings(&connection).map(|settings| public_openai_settings(&settings))
 }
 
 #[tauri::command]
-pub fn set_openai_settings(app: tauri::AppHandle, settings: OpenAiSettings) -> Result<(), String> {
+pub fn set_openai_settings(
+    app: tauri::AppHandle,
+    settings: UpdateOpenAiSettings,
+) -> Result<(), String> {
     let settings_path = settings_db_path_from_app(&app)?;
     set_openai_settings_at(&settings_path, &settings)
 }

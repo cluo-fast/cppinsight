@@ -168,10 +168,17 @@ export interface IndexProgressEvent {
   message?: string;
 }
 
-export interface OpenAiSettings {
+export interface PublicOpenAiSettings {
+    base_url: string;
+    model: string;
+    api_key_configured: boolean;
+}
+
+export interface UpdateOpenAiSettings {
   base_url: string;
-  api_key: string;
   model: string;
+  api_key: string | null;
+  clear_api_key: boolean;
 }
 
 export interface PersistedMessage {
