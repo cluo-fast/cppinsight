@@ -715,6 +715,33 @@ fn migrate_api_key_once_with_backend(
     Ok(())
 }
 
+fn migrate_legacy_api_keys_from_paths(
+    settings: &Connection,
+    candidates: &[PathBuf],
+    backend: &dyn secrets::SecretBackend,
+) -> Result<(), String> {
+    secrets::migrate_legacy_api_key(settings, backend)?;
+    for path in candidates {
+        if !path.exists() {
+            continue;
+        }
+        let legacy = Connection::open(path)
+            .map_err(|error| format!("failed to open legacy settings database: {error}"))?;
+        migrate_database(&legacy)?;
+        migrate_api_key_once_with_backend(&legacy, settings, backend)?;
+    }
+    Ok(())
+}
+
+pub(crate) fn migrate_legacy_api_keys(app: &tauri::AppHandle) -> Result<(), String> {
+    let settings_path = settings_db_path_from_app(app)?;
+    let settings = open_database_at(&settings_path)?;
+    let mut candidates = legacy_db_candidates(app);
+    candidates.sort();
+    candidates.dedup();
+    migrate_legacy_api_keys_from_paths(&settings, &candidates, &secrets::OsSecretBackend)
+}
+
 /// Migrate one project from legacy global DB into project-local DB. Best-effort.
 pub(crate) fn migrate_legacy_project_if_needed(
     app: &tauri::AppHandle,
@@ -743,7 +770,9 @@ pub(crate) fn migrate_legacy_project_if_needed(
             continue;
         }
 
-        let _ = migrate_api_key_once(&legacy, &settings_path);
+        if let Err(error) = migrate_api_key_once(&legacy, &settings_path) {
+            eprintln!("warning: legacy API key migration deferred: {error}");
+        }
 
         let Some(source_id) = find_legacy_project_id(&legacy, &root_str)? else {
             continue;
@@ -3217,6 +3246,40 @@ mod tests {
         );
         assert_eq!(
             super::read_setting_value(&settings, "openai_api_key").unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn restored_workspace_migrates_legacy_secret_without_project_reopen() {
+        let directory = tempfile::tempdir().unwrap();
+        let legacy_path = directory.path().join("projects.sqlite");
+        let legacy = rusqlite::Connection::open(&legacy_path).unwrap();
+        super::migrate_database(&legacy).unwrap();
+        super::upsert_setting_value(&legacy, "openai_api_key", "sk-restored").unwrap();
+        drop(legacy);
+
+        let settings = rusqlite::Connection::open_in_memory().unwrap();
+        super::migrate_database(&settings).unwrap();
+        let backend = TestSecretBackend::default();
+
+        super::migrate_legacy_api_keys_from_paths(
+            &settings,
+            &[legacy_path.clone()],
+            &backend,
+        )
+        .unwrap();
+
+        assert_eq!(
+            backend
+                .get(crate::secrets::OPENAI_ACCOUNT)
+                .unwrap()
+                .as_deref(),
+            Some("sk-restored")
+        );
+        let legacy = rusqlite::Connection::open(legacy_path).unwrap();
+        assert_eq!(
+            super::read_setting_value(&legacy, "openai_api_key").unwrap(),
             None
         );
     }

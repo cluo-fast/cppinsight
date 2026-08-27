@@ -1,4 +1,5 @@
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::io::Write;
 use std::path::Path;
 
@@ -15,6 +16,7 @@ pub struct DiagnosticProjectInput {
     pub conversation_count: u64,
     pub mode: String,
     pub confidence: String,
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -33,6 +35,7 @@ pub struct DiagnosticProject {
     pub conversation_count: u64,
     pub mode: String,
     pub confidence: String,
+    pub diagnostic_categories: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,16 +68,61 @@ pub fn build_report(
             .into_iter()
             .map(|project| DiagnosticProject {
                 project_id: anonymous_project_id(&project.root_path),
-                index_status: project.index_status,
+                index_status: allowlisted_value(
+                    &project.index_status,
+                    &["ready", "missing", "unavailable"],
+                ),
                 file_count: project.file_count,
                 symbol_count: project.symbol_count,
                 include_count: project.include_count,
                 conversation_count: project.conversation_count,
-                mode: project.mode,
-                confidence: project.confidence,
+                mode: allowlisted_value(&project.mode, &["heuristic", "hybrid"]),
+                confidence: allowlisted_value(
+                    &project.confidence,
+                    &["heuristic", "hybrid", "precise"],
+                ),
+                diagnostic_categories: normalize_diagnostic_categories(&project.diagnostics),
             })
             .collect(),
     }
+}
+
+fn allowlisted_value(value: &str, allowed: &[&str]) -> String {
+    let normalized = value.trim().to_ascii_lowercase();
+    if allowed.contains(&normalized.as_str()) {
+        normalized
+    } else {
+        "unknown".to_string()
+    }
+}
+
+fn normalize_diagnostic_categories(diagnostics: &[String]) -> Vec<String> {
+    let mut categories = BTreeSet::new();
+    for diagnostic in diagnostics {
+        let normalized = diagnostic.to_ascii_lowercase();
+        let category = if normalized == "index_missing" {
+            "index_missing"
+        } else if normalized == "index_unavailable" {
+            "index_unavailable"
+        } else if normalized.contains("permission") || normalized.contains("access denied") {
+            "permission_denied"
+        } else if normalized.contains("compile_commands") {
+            "compile_commands"
+        } else if normalized.contains("parse") || normalized.contains("syntax") {
+            "parse_error"
+        } else if normalized.contains("read")
+            || normalized.contains("write")
+            || normalized.contains("open")
+            || normalized.contains("sqlite")
+            || normalized.contains("database")
+        {
+            "storage_error"
+        } else {
+            "other"
+        };
+        categories.insert(category.to_string());
+    }
+    categories.into_iter().collect()
 }
 
 fn anonymous_project_id(root_path: &str) -> String {
@@ -97,15 +145,22 @@ pub fn write_report(target: &Path, report: &DiagnosticReport) -> Result<(), Stri
         return Err("diagnostic export requires an absolute .json path".to_string());
     }
 
-    let json = serde_json::to_vec_pretty(report)
+    let parent = target
+        .parent()
+        .ok_or_else(|| "diagnostic export path has no parent directory".to_string())?;
+    let mut temporary = tempfile::NamedTempFile::new_in(parent)
+        .map_err(|error| format!("failed to create temporary diagnostic report: {error}"))?;
+    serde_json::to_writer_pretty(temporary.as_file_mut(), report)
         .map_err(|error| format!("failed to serialize diagnostic report: {error}"))?;
-    let mut file = std::fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(target)
-        .map_err(|error| format!("failed to create diagnostic report: {error}"))?;
-    file.write_all(&json)
-        .map_err(|error| format!("failed to write diagnostic report: {error}"))
+    temporary
+        .write_all(b"\n")
+        .and_then(|_| temporary.flush())
+        .and_then(|_| temporary.as_file().sync_all())
+        .map_err(|error| format!("failed to flush diagnostic report: {error}"))?;
+    temporary
+        .persist_noclobber(target)
+        .map_err(|error| format!("failed to persist diagnostic report: {}", error.error))?;
+    Ok(())
 }
 
 #[cfg(test)]
@@ -122,6 +177,7 @@ mod tests {
             conversation_count: 2,
             mode: "compile-db".to_string(),
             confidence: "high".to_string(),
+            diagnostics: Vec::new(),
         }
     }
 
@@ -172,6 +228,33 @@ mod tests {
         assert_ne!(
             first.projects[0].project_id,
             different.projects[0].project_id
+        );
+    }
+
+    #[test]
+    fn report_allowlists_all_persisted_strings_and_normalizes_diagnostics() {
+        let mut project = sensitive_project("C:\\work\\alpha");
+        project.index_status = "C:\\Clients\\SecretCo".to_string();
+        project.mode = "sk-mode-secret".to_string();
+        project.confidence = "int main() { secret(); }".to_string();
+        project.diagnostics = vec![
+            "permission denied reading C:\\Clients\\SecretCo\\main.cpp".to_string(),
+            "failed to parse sk-diagnostic-secret".to_string(),
+        ];
+
+        let report = build_report("now", "0.1.0", "windows", "x86_64", vec![project]);
+        let json = serde_json::to_string_pretty(&report).unwrap();
+
+        assert!(!json.contains("SecretCo"));
+        assert!(!json.contains("sk-mode-secret"));
+        assert!(!json.contains("int main"));
+        assert!(!json.contains("sk-diagnostic-secret"));
+        assert_eq!(report.projects[0].index_status, "unknown");
+        assert_eq!(report.projects[0].mode, "unknown");
+        assert_eq!(report.projects[0].confidence, "unknown");
+        assert_eq!(
+            report.projects[0].diagnostic_categories,
+            vec!["parse_error", "permission_denied"]
         );
     }
 

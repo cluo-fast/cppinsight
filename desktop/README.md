@@ -10,12 +10,7 @@ Windows 桌面端由 React/Vite 前端与 Tauri/Rust 后端组成，运行时调
 .\scripts\start-desktop.ps1
 ```
 
-脚本会构建缺失的扫描器和桌面依赖。设置 `CPPINSIGHT_FORCE_DEV=1` 可强制进入开发模式：
-
-```powershell
-$env:CPPINSIGHT_FORCE_DEV = "1"
-.\scripts\start-desktop.ps1
-```
+脚本会构建缺失的扫描器和桌面依赖，然后构建并启动 production 可执行文件。强制重建可设置 `CPPINSIGHT_REBUILD=1`。
 
 ## 前端与 Rust 验证
 
@@ -29,13 +24,15 @@ cargo test --manifest-path src-tauri\Cargo.toml
 
 `pnpm run check` 会依次运行发布结构检查、TypeScript/Vite 生产构建和 Rust 测试。C++ 的 CMake/CTest 验证仍需从仓库根目录单独运行。
 
+`verify:release` 允许尚未生成的扫描器资源，适合本地源码检查；打包脚本和 Windows CI 使用严格的 `verify:bundle`，要求 `resources/cppinsight.exe` 已实际存在。
+
 ## 开发模式
 
 先确保 `desktop/src-tauri/resources/cppinsight.exe` 已生成，再运行：
 
 ```powershell
 cd desktop
-pnpm run dev
+pnpm tauri dev
 ```
 
 通常建议直接使用根目录的 `scripts/start-desktop.ps1`，因为它会处理扫描器构建和资源复制。

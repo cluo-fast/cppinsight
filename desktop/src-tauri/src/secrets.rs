@@ -77,10 +77,14 @@ pub fn update_api_key(
     new_value: Option<&str>,
     clear: bool,
 ) -> Result<(), String> {
+    let replacement = new_value.map(str::trim).filter(|value| !value.is_empty());
+    if clear && replacement.is_some() {
+        return Err("cannot clear and replace the API key in the same update".to_string());
+    }
     if clear {
         return backend.delete(OPENAI_ACCOUNT);
     }
-    if let Some(value) = new_value.map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(value) = replacement {
         backend.set(OPENAI_ACCOUNT, value)?;
     }
     Ok(())
@@ -212,6 +216,20 @@ mod tests {
         update_api_key(&backend, None, true).unwrap();
 
         assert_eq!(backend.get(OPENAI_ACCOUNT).unwrap(), None);
+    }
+
+    #[test]
+    fn conflicting_clear_and_replace_is_rejected_without_changing_secret() {
+        let backend = MemorySecretBackend::default();
+        backend.set(OPENAI_ACCOUNT, "sk-existing").unwrap();
+
+        let error = update_api_key(&backend, Some("sk-new"), true).unwrap_err();
+
+        assert!(error.contains("clear"));
+        assert_eq!(
+            backend.get(OPENAI_ACCOUNT).unwrap().as_deref(),
+            Some("sk-existing")
+        );
     }
 
     #[test]

@@ -190,6 +190,7 @@ export interface DiagnosticProject {
   conversation_count: number;
   mode: string;
   confidence: string;
+  diagnostic_categories: string[];
 }
 
 export interface DiagnosticReport {

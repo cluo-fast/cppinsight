@@ -819,6 +819,7 @@ export default function App() {
                 const next = !showSettings;
                 setShowSettings(next);
                 if (next) {
+                  setDiagnosticPreview(null);
                   try {
                     const loaded = await getOpenAiSettings();
                     setAiSettings({
@@ -868,8 +869,13 @@ export default function App() {
                   : "sk-... 或网关 Token"
               }
               value={aiSettings.api_key}
+              disabled={aiSettings.clear_api_key}
               onChange={(event) =>
-                setAiSettings((current) => ({ ...current, api_key: event.target.value }))
+                setAiSettings((current) => ({
+                  ...current,
+                  api_key: event.target.value,
+                  clear_api_key: false
+                }))
               }
             />
           </label>
@@ -941,7 +947,7 @@ export default function App() {
             </button>
             <button
               className="secondary"
-              disabled={diagnosticBusy}
+              disabled={diagnosticBusy || !diagnosticPreview}
               onClick={() => void saveDiagnosticReport()}
             >
               导出诊断 JSON

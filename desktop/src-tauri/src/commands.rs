@@ -9,11 +9,11 @@ use crate::{
 use crate::{
     ask_project_at_with_settings, build_client_summary, emit_index_progress,
     index_db_path_for_root, index_scan_json_at, inspect_symbol_at, load_project_overview,
-    migrate_legacy_project_if_needed, open_database_at, overview_from_scan, project_index_db_path,
-    public_openai_settings, read_openai_settings, run_scan, run_scan_with_progress,
-    set_openai_settings_at, settings_db_path_from_app, try_load_indexed_project_at, write_index,
-    AskResponse, IndexProgressEvent, InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings,
-    ScanResult, UpdateOpenAiSettings,
+    migrate_legacy_api_keys, migrate_legacy_project_if_needed, open_database_at,
+    overview_from_scan, project_index_db_path, public_openai_settings, read_openai_settings,
+    run_scan, run_scan_with_progress, set_openai_settings_at, settings_db_path_from_app,
+    try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
+    InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
 };
 use serde::Serialize;
 use std::path::PathBuf;
@@ -42,6 +42,7 @@ fn collect_diagnostic_report(app: &tauri::AppHandle) -> Result<DiagnosticReport,
             conversation_count,
             mode: "unknown".to_string(),
             confidence: "unknown".to_string(),
+            diagnostics: vec!["index_missing".to_string()],
         };
 
         match try_load_indexed_project_at(&root, &db_path) {
@@ -52,9 +53,13 @@ fn collect_diagnostic_report(app: &tauri::AppHandle) -> Result<DiagnosticReport,
                 diagnostic.include_count = overview.include_count;
                 diagnostic.mode = overview.mode;
                 diagnostic.confidence = overview.confidence;
+                diagnostic.diagnostics = overview.diagnostics;
             }
             Ok(None) => {}
-            Err(_) => diagnostic.index_status = "unavailable".to_string(),
+            Err(_) => {
+                diagnostic.index_status = "unavailable".to_string();
+                diagnostic.diagnostics = vec!["index_unavailable".to_string()];
+            }
         }
         projects.push(diagnostic);
     }
@@ -184,6 +189,9 @@ pub fn load_indexed_project(
 
 #[tauri::command]
 pub fn load_workspace(app: tauri::AppHandle) -> Result<LoadedWorkspace, String> {
+    if let Err(error) = migrate_legacy_api_keys(&app) {
+        eprintln!("warning: legacy API key migration deferred: {error}");
+    }
     let app_data = app_data_dir_from_app(&app)?;
     let db = workspace_db_path(&app_data);
     let snap = load_workspace_snapshot(&db)?;
@@ -240,6 +248,7 @@ pub fn load_project_chats(
 
 #[tauri::command]
 pub fn get_openai_settings(app: tauri::AppHandle) -> Result<PublicOpenAiSettings, String> {
+    migrate_legacy_api_keys(&app)?;
     let settings_path = settings_db_path_from_app(&app)?;
     let connection = open_database_at(&settings_path)?;
     read_openai_settings(&connection).map(|settings| public_openai_settings(&settings))
@@ -250,6 +259,7 @@ pub fn set_openai_settings(
     app: tauri::AppHandle,
     settings: UpdateOpenAiSettings,
 ) -> Result<(), String> {
+    migrate_legacy_api_keys(&app)?;
     let settings_path = settings_db_path_from_app(&app)?;
     set_openai_settings_at(&settings_path, &settings)
 }
@@ -274,6 +284,7 @@ pub async fn ask_project(
     project_id: i64,
     question: String,
 ) -> Result<AskResponse, String> {
+    migrate_legacy_api_keys(&app)?;
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
     let settings_path = settings_db_path_from_app(&app)?;
     ask_project_at_with_settings(project_id, &question, &db_path, Some(&settings_path)).await

@@ -34,7 +34,7 @@ Push-Location (Join-Path $RepoRoot "desktop")
 try {
     pnpm install --frozen-lockfile
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
-    pnpm run verify:release
+    pnpm run verify:bundle
     if ($LASTEXITCODE -ne 0) { throw "release configuration verification failed" }
     pnpm run build
     if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }

@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "check": "pnpm run verify:release && pnpm run build && cargo test --manifest-path src-tauri/Cargo.toml",
     "verify:release": "node ../scripts/verify-release-config.mjs --allow-generated-scanner",
+    "verify:bundle": "node ../scripts/verify-release-config.mjs",
     "preview": "vite preview",
     "tauri": "tauri"
   },
