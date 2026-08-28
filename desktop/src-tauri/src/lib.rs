@@ -2433,36 +2433,6 @@ fn best_hit_for_name(
         .next())
 }
 
-fn enclosing_definition(
-    connection: &Connection,
-    project_id: i64,
-    file: &str,
-    line: u64,
-) -> Result<Option<SymbolHit>, String> {
-    connection
-        .query_row(
-            "SELECT file, line, kind, name, signature, is_definition, confidence
-             FROM symbols
-             WHERE project_id = ?1 AND file = ?2 AND is_definition = 1 AND line <= ?3
-             ORDER BY line DESC
-             LIMIT 1",
-            params![project_id, file, line as i64],
-            |row| {
-                Ok(symbol_hit_from_row(
-                    row.get(0)?,
-                    row.get::<_, i64>(1)? as u64,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get::<_, i64>(5)? != 0,
-                    row.get(6)?,
-                ))
-            },
-        )
-        .optional()
-        .map_err(sql_error)
-}
-
 fn load_definition_lines_for_file(
     connection: &Connection,
     project_id: i64,

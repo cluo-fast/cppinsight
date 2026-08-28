@@ -459,7 +459,7 @@ git commit -m "feat: migrate index to generation-safe graph schema"
 - Produces: file nodes `file:<normalized-project-relative-path>` and module nodes `module:<top-level-or-dot>` without storing duplicate node tables.
 - Produces: weighted `module_relations` from resolved includes, cross-file calls, and resolved class facts.
 
-- [ ] **Step 1: Write failing exact, ambiguous, unresolved and aggregation tests**
+- [x] **Step 1: Write failing exact, ambiguous, unresolved and aggregation tests**
 
 Use an in-memory project containing `app::run`, `util::run`, `app::main`, resolved/unresolved includes, inheritance and calls. Assert:
 
@@ -474,7 +474,7 @@ assert_eq!(module_edge.evidence_count, 3);
 
 Assert repeated indexing produces byte-for-byte identical ordered candidate JSON.
 
-- [ ] **Step 2: Run relation tests to verify they fail**
+- [x] **Step 2: Run relation tests to verify they fail**
 
 Run:
 
@@ -484,11 +484,11 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol re
 
 Expected: rows are present but targets and module weights are not resolved.
 
-- [ ] **Step 3: Implement deterministic candidate resolution**
+- [x] **Step 3: Implement deterministic candidate resolution**
 
 Load definitions into maps keyed by stable key, qualified name, and unqualified name. Score candidates with exact integer tiers `500`, `400`, `300`, `200`, and `100`; retain all candidates tied at the best tier, sorted by stable key. A single candidate yields `resolved`; multiple candidates yield `ambiguous`; no candidate yields `unresolved`. Never select by SQLite insertion order.
 
-- [ ] **Step 4: Materialize relation and module rows**
+- [x] **Step 4: Materialize relation and module rows**
 
 Create one `symbol_relations` row per call or C++ type-relation fact. For unresolved targets, keep `target_key = ''` and the raw `target_name`. Aggregate each cross-module relation with:
 
@@ -508,7 +508,7 @@ DO UPDATE SET
     END;
 ```
 
-- [ ] **Step 5: Run focused and full Rust tests**
+- [x] **Step 5: Run focused and full Rust tests**
 
 Run:
 
@@ -519,7 +519,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml
 
 Expected: resolution, ambiguity, unresolved and aggregation tests pass without changing legacy inspect behavior.
 
-- [ ] **Step 6: Commit relation normalization**
+- [x] **Step 6: Commit relation normalization**
 
 ```bash
 git add desktop/src-tauri/src/index.rs desktop/src-tauri/tests/graph_protocol.rs

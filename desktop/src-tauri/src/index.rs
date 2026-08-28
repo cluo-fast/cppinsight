@@ -1,6 +1,7 @@
 use crate::{build_chunks, sql_error, ScanResult, SymbolInfo};
 use chrono::Utc;
 use rusqlite::{params, Connection};
+use std::collections::HashMap;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 3;
 
@@ -254,6 +255,8 @@ pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64
             )
             .map_err(sql_error)?;
     }
+
+    resolve_graph_facts(&transaction, project_id)?;
 
     transaction
         .execute(
@@ -512,10 +515,456 @@ pub(crate) fn normalized_qualified_name(symbol: &SymbolInfo) -> String {
     qualified_name(symbol)
 }
 
+#[derive(Debug, Clone)]
+struct StoredSymbol {
+    stable_key: String,
+    qualified_name: String,
+    name: String,
+    file: String,
+    line: u64,
+    is_definition: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ResolutionSummary {
+    pub resolved: usize,
+    pub ambiguous: usize,
+    pub unresolved: usize,
+    pub module_relations: usize,
+}
+
+fn parent_name(qualified_name: &str) -> &str {
+    qualified_name
+        .rsplit_once("::")
+        .map(|(parent, _)| parent)
+        .unwrap_or("")
+}
+
+fn module_for_file(file: &str) -> String {
+    let normalized = file.replace('\\', "/");
+    let top = normalized
+        .split('/')
+        .find(|part| !part.is_empty() && *part != ".")
+        .unwrap_or(".");
+    format!("module:{top}")
+}
+
+fn load_stored_symbols(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<Vec<StoredSymbol>, String> {
+    let mut statement = connection
+        .prepare(
+            "SELECT stable_key, qualified_name, name, file, line, is_definition
+             FROM symbols WHERE project_id = ?1
+             ORDER BY stable_key, is_definition DESC, file, line",
+        )
+        .map_err(sql_error)?;
+    let rows = statement
+        .query_map(params![project_id], |row| {
+            Ok(StoredSymbol {
+                stable_key: row.get(0)?,
+                qualified_name: row.get(1)?,
+                name: row.get(2)?,
+                file: row.get(3)?,
+                line: row.get::<_, i64>(4)? as u64,
+                is_definition: row.get::<_, i64>(5)? != 0,
+            })
+        })
+        .map_err(sql_error)?;
+    let mut symbols = Vec::new();
+    for row in rows {
+        symbols.push(row.map_err(sql_error)?);
+    }
+    Ok(symbols)
+}
+
+fn resolve_candidates(
+    symbols: &[StoredSymbol],
+    source: Option<&StoredSymbol>,
+    target_qualified_name: &str,
+    target_name: &str,
+) -> Vec<String> {
+    let qualified_hint = if !target_qualified_name.trim().is_empty() {
+        target_qualified_name.trim()
+    } else if target_name.contains("::") {
+        target_name.trim()
+    } else {
+        ""
+    };
+    let unqualified = target_name
+        .trim()
+        .rsplit_once("::")
+        .map(|(_, name)| name)
+        .unwrap_or_else(|| target_name.trim());
+
+    let mut scored = Vec::new();
+    for candidate in symbols {
+        let base_score = if !qualified_hint.is_empty() && candidate.qualified_name == qualified_hint
+        {
+            400
+        } else if candidate.name != unqualified {
+            continue;
+        } else if source.is_some_and(|source| {
+            !parent_name(source.qualified_name.as_str()).is_empty()
+                && parent_name(source.qualified_name.as_str())
+                    == parent_name(candidate.qualified_name.as_str())
+        }) {
+            300
+        } else if source.is_some_and(|source| {
+            module_for_file(source.file.as_str()) == module_for_file(candidate.file.as_str())
+        }) {
+            200
+        } else {
+            100
+        };
+        let score = base_score + i32::from(candidate.is_definition);
+        scored.push((score, candidate.stable_key.clone()));
+    }
+
+    let Some(best_score) = scored.iter().map(|(score, _)| *score).max() else {
+        return Vec::new();
+    };
+    let mut candidates = scored
+        .into_iter()
+        .filter_map(|(score, stable_key)| (score == best_score).then_some(stable_key))
+        .collect::<Vec<_>>();
+    candidates.sort();
+    candidates.dedup();
+    candidates
+}
+
+fn resolution_state(candidates: &[String]) -> (&'static str, bool, String) {
+    match candidates {
+        [] => ("unresolved", false, String::new()),
+        [target] => ("resolved", false, target.clone()),
+        _ => ("ambiguous", true, String::new()),
+    }
+}
+
+fn aggregate_module_relation(
+    connection: &Connection,
+    project_id: i64,
+    source_module: &str,
+    target_module: &str,
+    relation_kind: &str,
+    confidence: &str,
+) -> Result<(), String> {
+    if source_module == target_module {
+        return Ok(());
+    }
+    connection
+        .execute(
+            "INSERT INTO module_relations(
+                project_id, source_module, target_module, relation_kind,
+                weight, confidence, evidence_count
+             ) VALUES(?1, ?2, ?3, ?4, 1, ?5, 1)
+             ON CONFLICT(project_id, source_module, target_module, relation_kind)
+             DO UPDATE SET
+                weight = weight + 1,
+                evidence_count = evidence_count + 1,
+                confidence = CASE
+                    WHEN excluded.confidence = 'unresolved' THEN 'unresolved'
+                    WHEN excluded.confidence = 'ambiguous'
+                         AND confidence != 'unresolved' THEN 'ambiguous'
+                    WHEN excluded.confidence = 'heuristic'
+                         AND confidence NOT IN ('unresolved', 'ambiguous') THEN 'heuristic'
+                    ELSE confidence
+                END",
+            params![
+                project_id,
+                source_module,
+                target_module,
+                relation_kind,
+                confidence
+            ],
+        )
+        .map_err(sql_error)?;
+    Ok(())
+}
+
+pub fn resolve_graph_facts(
+    connection: &Connection,
+    project_id: i64,
+) -> Result<ResolutionSummary, String> {
+    let symbols = load_stored_symbols(connection, project_id)?;
+    let by_key: HashMap<&str, &StoredSymbol> = symbols
+        .iter()
+        .map(|symbol| (symbol.stable_key.as_str(), symbol))
+        .collect();
+    let by_qualified: HashMap<&str, &StoredSymbol> = symbols
+        .iter()
+        .filter(|symbol| symbol.is_definition)
+        .map(|symbol| (symbol.qualified_name.as_str(), symbol))
+        .collect();
+    let mut definitions_by_file: HashMap<&str, Vec<&StoredSymbol>> = HashMap::new();
+    for symbol in symbols.iter().filter(|symbol| symbol.is_definition) {
+        definitions_by_file
+            .entry(symbol.file.as_str())
+            .or_default()
+            .push(symbol);
+    }
+    for definitions in definitions_by_file.values_mut() {
+        definitions.sort_by_key(|symbol| symbol.line);
+    }
+
+    connection
+        .execute(
+            "DELETE FROM symbol_relations
+             WHERE project_id = ?1 AND relation_kind = 'calls'",
+            params![project_id],
+        )
+        .map_err(sql_error)?;
+
+    let calls = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, file, line, name, target_qualified_name,
+                        caller_qualified_name, caller_stable_key
+                 FROM calls WHERE project_id = ?1 ORDER BY id",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)? as u64,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row.map_err(sql_error)?);
+        }
+        values
+    };
+
+    let mut summary = ResolutionSummary::default();
+    for (id, file, line, name, target_qualified_name, caller_qualified_name, caller_key) in calls {
+        let source = by_key
+            .get(caller_key.as_str())
+            .copied()
+            .or_else(|| by_qualified.get(caller_qualified_name.as_str()).copied())
+            .or_else(|| {
+                definitions_by_file
+                    .get(file.as_str())
+                    .and_then(|definitions| {
+                        definitions
+                            .iter()
+                            .rev()
+                            .find(|symbol| symbol.line <= line)
+                            .copied()
+                    })
+            });
+        let candidates =
+            resolve_candidates(&symbols, source, &target_qualified_name, name.as_str());
+        let (confidence, ambiguous, target_key) = resolution_state(&candidates);
+        match confidence {
+            "resolved" => summary.resolved += 1,
+            "ambiguous" => summary.ambiguous += 1,
+            _ => summary.unresolved += 1,
+        }
+        let candidates_json = serde_json::to_string(&candidates)
+            .map_err(|error| format!("failed to encode call candidates: {error}"))?;
+        let source_key = source
+            .map(|symbol| symbol.stable_key.as_str())
+            .unwrap_or(caller_key.as_str());
+        let source_name = source
+            .map(|symbol| symbol.qualified_name.as_str())
+            .unwrap_or(caller_qualified_name.as_str());
+        connection
+            .execute(
+                "UPDATE calls
+                 SET caller_stable_key = ?2,
+                     caller_qualified_name = ?3,
+                     resolved_target_key = ?4,
+                     candidate_target_keys_json = ?5,
+                     confidence = ?6
+                 WHERE id = ?1",
+                params![
+                    id,
+                    source_key,
+                    source_name,
+                    target_key,
+                    candidates_json,
+                    confidence
+                ],
+            )
+            .map_err(sql_error)?;
+        if !source_key.is_empty() {
+            connection
+                .execute(
+                    "INSERT INTO symbol_relations(
+                        project_id, source_key, target_key, target_name, relation_kind,
+                        evidence_file, evidence_line, confidence, ambiguous,
+                        candidate_target_keys_json
+                     ) VALUES(?1, ?2, ?3, ?4, 'calls', ?5, ?6, ?7, ?8, ?9)",
+                    params![
+                        project_id,
+                        source_key,
+                        target_key,
+                        if target_qualified_name.is_empty() {
+                            name.as_str()
+                        } else {
+                            target_qualified_name.as_str()
+                        },
+                        file,
+                        line as i64,
+                        confidence,
+                        i64::from(ambiguous),
+                        candidates_json,
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    let raw_relations = {
+        let mut statement = connection
+            .prepare(
+                "SELECT id, source_key, target_name
+                 FROM symbol_relations
+                 WHERE project_id = ?1 AND relation_kind != 'calls'
+                 ORDER BY id",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row.map_err(sql_error)?);
+        }
+        values
+    };
+    for (id, source_key, target_name) in raw_relations {
+        let source = by_key.get(source_key.as_str()).copied();
+        let candidates = resolve_candidates(&symbols, source, &target_name, &target_name);
+        let (confidence, ambiguous, target_key) = resolution_state(&candidates);
+        let candidates_json = serde_json::to_string(&candidates)
+            .map_err(|error| format!("failed to encode relation candidates: {error}"))?;
+        connection
+            .execute(
+                "UPDATE symbol_relations
+                 SET target_key = ?2, confidence = ?3, ambiguous = ?4,
+                     candidate_target_keys_json = ?5
+                 WHERE id = ?1",
+                params![
+                    id,
+                    target_key,
+                    confidence,
+                    i64::from(ambiguous),
+                    candidates_json
+                ],
+            )
+            .map_err(sql_error)?;
+    }
+
+    connection
+        .execute(
+            "DELETE FROM module_relations WHERE project_id = ?1",
+            params![project_id],
+        )
+        .map_err(sql_error)?;
+    let includes = {
+        let mut statement = connection
+            .prepare(
+                "SELECT file, resolved_path
+                 FROM includes
+                 WHERE project_id = ?1 AND resolved = 1 AND resolved_path != ''
+                 ORDER BY file, resolved_path, line",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![project_id], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(sql_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row.map_err(sql_error)?);
+        }
+        values
+    };
+    for (source_file, target_file) in includes {
+        aggregate_module_relation(
+            connection,
+            project_id,
+            module_for_file(&source_file).as_str(),
+            module_for_file(&target_file).as_str(),
+            "include",
+            "resolved",
+        )?;
+    }
+
+    let resolved_relations = {
+        let mut statement = connection
+            .prepare(
+                "SELECT source_key, target_key, relation_kind, confidence
+                 FROM symbol_relations
+                 WHERE project_id = ?1 AND source_key != '' AND target_key != ''
+                 ORDER BY id",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        let mut values = Vec::new();
+        for row in rows {
+            values.push(row.map_err(sql_error)?);
+        }
+        values
+    };
+    for (source_key, target_key, relation_kind, confidence) in resolved_relations {
+        let (Some(source), Some(target)) = (
+            by_key.get(source_key.as_str()).copied(),
+            by_key.get(target_key.as_str()).copied(),
+        ) else {
+            continue;
+        };
+        aggregate_module_relation(
+            connection,
+            project_id,
+            module_for_file(&source.file).as_str(),
+            module_for_file(&target.file).as_str(),
+            relation_kind.as_str(),
+            confidence.as_str(),
+        )?;
+    }
+
+    summary.module_relations = connection
+        .query_row(
+            "SELECT COUNT(*) FROM module_relations WHERE project_id = ?1",
+            params![project_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .map_err(sql_error)? as usize;
+    Ok(summary)
+}
+
 pub(crate) fn upgrade_legacy_project_rows(
     connection: &Connection,
     project_id: i64,
 ) -> Result<(), String> {
+    let previous_status = load_index_status(connection, project_id)?;
     let symbols = {
         let mut statement = connection
             .prepare(
@@ -566,6 +1015,10 @@ pub(crate) fn upgrade_legacy_project_rows(
                 ],
             )
             .map_err(sql_error)?;
+    }
+
+    if previous_status.schema_version < INDEX_SCHEMA_VERSION || !previous_status.complete {
+        resolve_graph_facts(connection, project_id)?;
     }
 
     connection

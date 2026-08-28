@@ -3,7 +3,8 @@ use cppinsight_ai_lib::graph::{
 };
 use cppinsight_ai_lib::index::{load_index_status, INDEX_SCHEMA_VERSION};
 use cppinsight_ai_lib::{
-    open_database_at, write_index, CallInfo, LineStats, ScanResult, ScanStats, SymbolInfo,
+    open_database_at, write_index, CallInfo, IncludeInfo, LineStats, ScanResult, ScanStats,
+    SymbolInfo, SymbolRelationInfo,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -79,6 +80,168 @@ fn schema_two_scan(root: &str, symbol_name: &str) -> ScanResult {
             confidence: "heuristic".to_string(),
         }],
         relations: Vec::new(),
+        entry_points: Vec::new(),
+        files: Vec::new(),
+    }
+}
+
+fn graph_resolution_scan(root: &str) -> ScanResult {
+    let symbol =
+        |key: &str, qualified_name: &str, name: &str, kind: &str, file: &str, line: u64| {
+            SymbolInfo {
+                file: file.to_string(),
+                line,
+                kind: kind.to_string(),
+                name: name.to_string(),
+                qualified_name: qualified_name.to_string(),
+                stable_key: key.to_string(),
+                parent_qualified_name: qualified_name
+                    .rsplit_once("::")
+                    .map(|(parent, _)| parent.to_string())
+                    .unwrap_or_default(),
+                parent_stable_key: String::new(),
+                signature: format!("{kind} {qualified_name}"),
+                scope: qualified_name
+                    .rsplit_once("::")
+                    .map(|(parent, _)| parent.to_string())
+                    .unwrap_or_default(),
+                is_definition: true,
+                confidence: "heuristic".to_string(),
+            }
+        };
+    let call = |line: u64,
+                caller_key: &str,
+                caller_name: &str,
+                name: &str,
+                target_qualified_name: &str,
+                file: &str| CallInfo {
+        file: file.to_string(),
+        line,
+        name: name.to_string(),
+        target_qualified_name: target_qualified_name.to_string(),
+        caller_qualified_name: caller_name.to_string(),
+        caller_stable_key: caller_key.to_string(),
+        confidence: "heuristic".to_string(),
+    };
+
+    ScanResult {
+        schema_version: 3,
+        generator_version: "cppinsight-core/0.1.0".to_string(),
+        root: root.to_string(),
+        mode: "heuristic".to_string(),
+        confidence: "heuristic".to_string(),
+        scan_duration_ms: 1,
+        compile_commands: String::new(),
+        compile_commands_entries: 0,
+        reused_file_count: 0,
+        file_count: 0,
+        skipped_entries: 0,
+        stats: ScanStats::default(),
+        extensions: BTreeMap::new(),
+        top_level_layout: BTreeMap::new(),
+        second_level_layout: BTreeMap::new(),
+        diagnostics: Vec::new(),
+        includes: ["one.h", "two.h", "three.h"]
+            .into_iter()
+            .enumerate()
+            .map(|(index, target)| IncludeInfo {
+                file: "app/main.cpp".to_string(),
+                line: (index + 1) as u64,
+                target: target.to_string(),
+                kind: "local".to_string(),
+                resolved: true,
+                resolved_path: format!("util/{target}"),
+            })
+            .collect(),
+        symbols: vec![
+            symbol(
+                "sym:0000000000000001",
+                "app::main",
+                "main",
+                "function",
+                "app/main.cpp",
+                1,
+            ),
+            symbol(
+                "sym:0000000000000002",
+                "main",
+                "main",
+                "function",
+                "main.cpp",
+                1,
+            ),
+            symbol(
+                "sym:0000000000000003",
+                "app::run",
+                "run",
+                "function",
+                "app/run.cpp",
+                5,
+            ),
+            symbol(
+                "sym:0000000000000004",
+                "util::run",
+                "run",
+                "function",
+                "util/run.cpp",
+                5,
+            ),
+            symbol(
+                "sym:0000000000000005",
+                "app::Runner",
+                "Runner",
+                "class",
+                "app/runner.h",
+                3,
+            ),
+            symbol(
+                "sym:0000000000000006",
+                "app::Base",
+                "Base",
+                "class",
+                "app/base.h",
+                3,
+            ),
+        ],
+        calls: vec![
+            call(
+                10,
+                "sym:0000000000000001",
+                "app::main",
+                "run",
+                "app::run",
+                "app/main.cpp",
+            ),
+            call(20, "sym:0000000000000002", "main", "run", "", "main.cpp"),
+            call(
+                30,
+                "sym:0000000000000001",
+                "app::main",
+                "missing",
+                "app::missing",
+                "app/main.cpp",
+            ),
+        ],
+        relations: vec![
+            SymbolRelationInfo {
+                file: "app/runner.h".to_string(),
+                line: 3,
+                source_qualified_name: "app::Runner".to_string(),
+                source_stable_key: "sym:0000000000000005".to_string(),
+                target_name: "app::Base".to_string(),
+                kind: "inherits".to_string(),
+                confidence: "heuristic".to_string(),
+            },
+            SymbolRelationInfo {
+                file: "app/runner.h".to_string(),
+                line: 4,
+                source_qualified_name: "app::Runner".to_string(),
+                source_stable_key: "sym:0000000000000005".to_string(),
+                target_name: "app::MissingType".to_string(),
+                kind: "uses".to_string(),
+                confidence: "heuristic".to_string(),
+            },
+        ],
         entry_points: Vec::new(),
         files: Vec::new(),
     }
@@ -341,4 +504,116 @@ fn partially_migrated_legacy_database_gets_every_missing_base_column() {
             "missing {table}.{column}"
         );
     }
+}
+
+#[test]
+fn relation_resolution_is_deterministic_and_preserves_ambiguity() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("relations.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let scan = graph_resolution_scan("D:/relations");
+    let project_id = write_index(&mut connection, &scan).unwrap();
+
+    let calls: Vec<(u64, String, String, String)> = connection
+        .prepare(
+            "SELECT line, resolved_target_key, candidate_target_keys_json, confidence
+             FROM calls WHERE project_id = ?1 ORDER BY line",
+        )
+        .unwrap()
+        .query_map([project_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)? as u64,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        calls,
+        vec![
+            (
+                10,
+                "sym:0000000000000003".to_string(),
+                "[\"sym:0000000000000003\"]".to_string(),
+                "resolved".to_string(),
+            ),
+            (
+                20,
+                String::new(),
+                "[\"sym:0000000000000003\",\"sym:0000000000000004\"]".to_string(),
+                "ambiguous".to_string(),
+            ),
+            (
+                30,
+                String::new(),
+                "[]".to_string(),
+                "unresolved".to_string()
+            ),
+        ]
+    );
+
+    let relations: Vec<(String, String, String, i64)> = connection
+        .prepare(
+            "SELECT relation_kind, target_key, confidence, ambiguous
+             FROM symbol_relations
+             WHERE project_id = ?1 AND relation_kind != 'calls'
+             ORDER BY evidence_line",
+        )
+        .unwrap()
+        .query_map([project_id], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(
+        relations,
+        vec![
+            (
+                "inherits".to_string(),
+                "sym:0000000000000006".to_string(),
+                "resolved".to_string(),
+                0,
+            ),
+            (
+                "uses".to_string(),
+                String::new(),
+                "unresolved".to_string(),
+                0
+            ),
+        ]
+    );
+
+    let module_edge: (i64, i64, String) = connection
+        .query_row(
+            "SELECT weight, evidence_count, confidence FROM module_relations
+             WHERE project_id = ?1 AND source_module = 'module:app'
+               AND target_module = 'module:util' AND relation_kind = 'include'",
+            [project_id],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(module_edge, (3, 3, "resolved".to_string()));
+
+    let candidates_before: String = connection
+        .query_row(
+            "SELECT candidate_target_keys_json FROM calls
+             WHERE project_id = ?1 AND line = 20",
+            [project_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    write_index(&mut connection, &scan).unwrap();
+    let candidates_after: String = connection
+        .query_row(
+            "SELECT candidate_target_keys_json FROM calls
+             WHERE project_id = ?1 AND line = 20",
+            [project_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(candidates_after, candidates_before);
 }
