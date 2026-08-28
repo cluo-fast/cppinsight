@@ -541,7 +541,7 @@ git commit -m "feat: resolve graph relations and module weights"
 - Produces deterministic BFS by requested direction/depth, filters before paging, shortest path when `path_target` is present, cycle membership, degree-central nodes, and `v1:<offset>` continuation.
 - Consumes: normalized facts and relations from Tasks 3–4.
 
-- [ ] **Step 1: Write one failing behavioral test per graph kind**
+- [x] **Step 1: Write one failing behavioral test per graph kind**
 
 Assert:
 
@@ -565,7 +565,7 @@ assert_eq!(entries.statistics.shortest_path_node_ids.last(), Some(&target_key));
 
 Add filter/depth tests, a three-node cycle, a disconnected path, ambiguity evidence, and a 620-node synthetic chain requested with `max_nodes = 500` then continued with the returned token.
 
-- [ ] **Step 2: Run query tests to verify they fail**
+- [x] **Step 2: Run query tests to verify they fail**
 
 Run:
 
@@ -575,7 +575,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol gr
 
 Expected: `query_graph` is missing or returns empty graphs.
 
-- [ ] **Step 3: Load canonical nodes and edges for each graph kind**
+- [x] **Step 3: Load canonical nodes and edges for each graph kind**
 
 Use only these mappings:
 
@@ -589,11 +589,11 @@ entry_paths         -> calls edges, roots default to entry-point symbol keys
 
 Create evidence IDs as `ev:` + FNV-1a of edge kind, source, target, file, and line. Include raw target names as unresolved placeholder nodes only when `confidence` filters allow `unresolved`; placeholder IDs start `unresolved:` plus a stable hash.
 
-- [ ] **Step 4: Implement deterministic traversal and filters**
+- [x] **Step 4: Implement deterministic traversal and filters**
 
 Build sorted adjacency lists and perform BFS from roots in `incoming`, `outgoing`, or `both` direction up to depth `8`. With no roots, return the graph kind's top degree nodes and their one-hop neighborhood. Apply module, file, symbol-kind, relation-kind, confidence and case-folded search filters before computing original counts and paging.
 
-- [ ] **Step 5: Implement analysis and continuation**
+- [x] **Step 5: Implement analysis and continuation**
 
 Use BFS for shortest path, Tarjan strongly connected components for cycles, and `(in_degree + out_degree, stable_id)` ordering for central nodes. The first page includes nodes `[0..max_nodes)`; `v1:<offset>` requests subsequent deterministic node slices. Include only edges whose endpoints occur in that page, and report full filtered counts as `original_*`. Set:
 
@@ -603,7 +603,7 @@ truncation_reason = truncated.then(|| "node_limit".to_string());
 continuation = truncated.then(|| format!("v1:{}", offset + returned_node_count));
 ```
 
-- [ ] **Step 6: Run focused, full and lint verification**
+- [x] **Step 6: Run focused, full and lint verification**
 
 Run:
 

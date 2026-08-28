@@ -1,10 +1,11 @@
 use cppinsight_ai_lib::graph::{
-    GraphDirection, GraphKind, GraphQueryRequest, GraphQueryResponse, GRAPH_PROTOCOL_VERSION,
+    query_graph, GraphDirection, GraphFilters, GraphKind, GraphQueryRequest, GraphQueryResponse,
+    GRAPH_PROTOCOL_VERSION,
 };
 use cppinsight_ai_lib::index::{load_index_status, INDEX_SCHEMA_VERSION};
 use cppinsight_ai_lib::{
-    open_database_at, write_index, CallInfo, IncludeInfo, LineStats, ScanResult, ScanStats,
-    SymbolInfo, SymbolRelationInfo,
+    open_database_at, write_index, CallInfo, EntryPointInfo, IncludeInfo, LineStats, ScanResult,
+    ScanStats, SymbolInfo, SymbolRelationInfo,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -80,8 +81,30 @@ fn schema_two_scan(root: &str, symbol_name: &str) -> ScanResult {
             confidence: "heuristic".to_string(),
         }],
         relations: Vec::new(),
-        entry_points: Vec::new(),
+        entry_points: vec![EntryPointInfo {
+            file: "app/main.cpp".to_string(),
+            line: 1,
+            qualified_name: "app::main".to_string(),
+            symbol_stable_key: "sym:0000000000000001".to_string(),
+            kind: "program".to_string(),
+            confidence: "heuristic".to_string(),
+        }],
         files: Vec::new(),
+    }
+}
+
+fn graph_request(project_id: i64, graph_kind: GraphKind, roots: &[&str]) -> GraphQueryRequest {
+    GraphQueryRequest {
+        protocol_version: GRAPH_PROTOCOL_VERSION,
+        project_id,
+        graph_kind,
+        root_node_ids: roots.iter().map(|root| (*root).to_string()).collect(),
+        direction: GraphDirection::Both,
+        depth: 2,
+        filters: GraphFilters::default(),
+        max_nodes: 500,
+        path_target: None,
+        continuation: None,
     }
 }
 
@@ -242,7 +265,14 @@ fn graph_resolution_scan(root: &str) -> ScanResult {
                 confidence: "heuristic".to_string(),
             },
         ],
-        entry_points: Vec::new(),
+        entry_points: vec![EntryPointInfo {
+            file: "app/main.cpp".to_string(),
+            line: 1,
+            qualified_name: "app::main".to_string(),
+            symbol_stable_key: "sym:0000000000000001".to_string(),
+            kind: "program".to_string(),
+            confidence: "heuristic".to_string(),
+        }],
         files: Vec::new(),
     }
 }
@@ -616,4 +646,317 @@ fn relation_resolution_is_deterministic_and_preserves_ambiguity() {
         )
         .unwrap();
     assert_eq!(candidates_after, candidates_before);
+}
+
+#[test]
+fn graph_query_returns_all_five_normalized_graph_kinds() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("five-kinds.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let project_id = write_index(&mut connection, &graph_resolution_scan("D:/five-kinds")).unwrap();
+
+    let modules = query_graph(
+        &connection,
+        graph_request(project_id, GraphKind::ModuleDependencies, &[]),
+    )
+    .unwrap();
+    assert!(modules.edges.iter().any(|edge| {
+        edge.source == "module:app"
+            && edge.target == "module:util"
+            && edge.kind == "include"
+            && edge.weight == 3
+    }));
+
+    let calls = query_graph(
+        &connection,
+        graph_request(
+            project_id,
+            GraphKind::FunctionCalls,
+            &["sym:0000000000000001"],
+        ),
+    )
+    .unwrap();
+    assert!(calls
+        .nodes
+        .iter()
+        .any(|node| node.id == "sym:0000000000000003"));
+    assert!(calls.edges.iter().any(|edge| {
+        edge.source == "sym:0000000000000001"
+            && edge.target == "sym:0000000000000003"
+            && edge.kind == "calls"
+    }));
+
+    let classes = query_graph(
+        &connection,
+        graph_request(
+            project_id,
+            GraphKind::ClassRelations,
+            &["sym:0000000000000005"],
+        ),
+    )
+    .unwrap();
+    assert!(classes.edges.iter().any(|edge| {
+        edge.source == "sym:0000000000000005"
+            && edge.target == "sym:0000000000000006"
+            && edge.kind == "inherits"
+    }));
+
+    let includes = query_graph(
+        &connection,
+        graph_request(project_id, GraphKind::FileIncludes, &["file:app/main.cpp"]),
+    )
+    .unwrap();
+    assert!(includes
+        .nodes
+        .iter()
+        .all(|node| node.id.starts_with("file:")));
+    assert!(includes
+        .nodes
+        .iter()
+        .any(|node| node.id == "file:util/one.h"));
+
+    let mut entry_request =
+        graph_request(project_id, GraphKind::EntryPaths, &["sym:0000000000000001"]);
+    entry_request.direction = GraphDirection::Outgoing;
+    entry_request.path_target = Some("sym:0000000000000003".to_string());
+    let entries = query_graph(&connection, entry_request).unwrap();
+    assert_eq!(
+        entries.statistics.shortest_path_node_ids,
+        [
+            "sym:0000000000000001".to_string(),
+            "sym:0000000000000003".to_string()
+        ]
+    );
+}
+
+fn synthetic_function(key: usize, name: &str) -> SymbolInfo {
+    SymbolInfo {
+        file: format!("chain/{name}.cpp"),
+        line: 1,
+        kind: "function".to_string(),
+        name: name.to_string(),
+        qualified_name: format!("chain::{name}"),
+        stable_key: format!("sym:{key:016x}"),
+        parent_qualified_name: "chain".to_string(),
+        parent_stable_key: String::new(),
+        signature: format!("void chain::{name}()"),
+        scope: "chain".to_string(),
+        is_definition: true,
+        confidence: "heuristic".to_string(),
+    }
+}
+
+fn synthetic_call(source: usize, target: usize, line: u64) -> CallInfo {
+    CallInfo {
+        file: format!("chain/node_{source}.cpp"),
+        line,
+        name: format!("node_{target}"),
+        target_qualified_name: format!("chain::node_{target}"),
+        caller_qualified_name: format!("chain::node_{source}"),
+        caller_stable_key: format!("sym:{source:016x}"),
+        confidence: "heuristic".to_string(),
+    }
+}
+
+#[test]
+fn graph_query_honors_direction_depth_and_search_filters() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("traversal.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let project_id = write_index(&mut connection, &graph_resolution_scan("D:/traversal")).unwrap();
+
+    let mut outgoing = graph_request(
+        project_id,
+        GraphKind::FunctionCalls,
+        &["sym:0000000000000001"],
+    );
+    outgoing.direction = GraphDirection::Outgoing;
+    outgoing.depth = 0;
+    let depth_zero = query_graph(&connection, outgoing.clone()).unwrap();
+    assert_eq!(
+        depth_zero
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>(),
+        ["sym:0000000000000001"]
+    );
+
+    outgoing.depth = 1;
+    let depth_one = query_graph(&connection, outgoing).unwrap();
+    assert!(depth_one
+        .nodes
+        .iter()
+        .any(|node| node.id == "sym:0000000000000003"));
+    assert!(!depth_one
+        .nodes
+        .iter()
+        .any(|node| node.id == "sym:0000000000000002"));
+
+    let mut incoming = graph_request(
+        project_id,
+        GraphKind::FunctionCalls,
+        &["sym:0000000000000003"],
+    );
+    incoming.direction = GraphDirection::Incoming;
+    incoming.depth = 1;
+    let incoming = query_graph(&connection, incoming).unwrap();
+    assert!(incoming
+        .nodes
+        .iter()
+        .any(|node| node.id == "sym:0000000000000001"));
+
+    let mut search = graph_request(project_id, GraphKind::FunctionCalls, &[]);
+    search.filters.search = Some("util::run".to_string());
+    let search = query_graph(&connection, search).unwrap();
+    assert_eq!(search.nodes.len(), 1);
+    assert_eq!(search.nodes[0].id, "sym:0000000000000004");
+}
+
+#[test]
+fn graph_query_reports_cycles_paths_and_ambiguous_evidence() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("insights.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let mut scan = graph_resolution_scan("D:/insights");
+    scan.symbols.extend([
+        synthetic_function(7, "node_7"),
+        synthetic_function(8, "node_8"),
+        synthetic_function(9, "node_9"),
+    ]);
+    scan.calls.extend([
+        synthetic_call(7, 8, 1),
+        synthetic_call(8, 9, 2),
+        synthetic_call(9, 7, 3),
+    ]);
+    let project_id = write_index(&mut connection, &scan).unwrap();
+
+    let cycle = query_graph(
+        &connection,
+        graph_request(
+            project_id,
+            GraphKind::FunctionCalls,
+            &["sym:0000000000000007"],
+        ),
+    )
+    .unwrap();
+    assert_eq!(cycle.statistics.cycle_count, 1);
+    assert!(cycle.groups.iter().any(|group| {
+        group.kind == "cycle"
+            && group.node_ids
+                == [
+                    "sym:0000000000000007".to_string(),
+                    "sym:0000000000000008".to_string(),
+                    "sym:0000000000000009".to_string(),
+                ]
+    }));
+
+    let mut disconnected =
+        graph_request(project_id, GraphKind::EntryPaths, &["sym:0000000000000001"]);
+    disconnected.direction = GraphDirection::Outgoing;
+    disconnected.path_target = Some("sym:0000000000000004".to_string());
+    assert!(query_graph(&connection, disconnected)
+        .unwrap()
+        .statistics
+        .shortest_path_node_ids
+        .is_empty());
+
+    let ambiguous = query_graph(
+        &connection,
+        graph_request(
+            project_id,
+            GraphKind::FunctionCalls,
+            &["sym:0000000000000002"],
+        ),
+    )
+    .unwrap();
+    let edge = ambiguous.edges.iter().find(|edge| edge.ambiguous).unwrap();
+    assert_eq!(
+        edge.confidence,
+        cppinsight_ai_lib::graph::GraphConfidence::Ambiguous
+    );
+    assert!(!edge.evidence_ids.is_empty());
+    assert!(edge.evidence_ids.iter().all(|id| id.starts_with("ev:")));
+    assert!(ambiguous
+        .evidence
+        .iter()
+        .any(|evidence| evidence.edge_id == edge.id));
+    let mut resolved_only = graph_request(
+        project_id,
+        GraphKind::FunctionCalls,
+        &["sym:0000000000000002"],
+    );
+    resolved_only.filters.confidence = vec![cppinsight_ai_lib::graph::GraphConfidence::Resolved];
+    let resolved_only = query_graph(&connection, resolved_only).unwrap();
+    assert!(resolved_only.edges.iter().all(|edge| !edge.ambiguous));
+    assert!(resolved_only
+        .nodes
+        .iter()
+        .all(|node| !node.id.starts_with("unresolved:")));
+
+    let mut missing_target =
+        graph_request(project_id, GraphKind::EntryPaths, &["sym:0000000000000001"]);
+    missing_target.path_target = Some("sym:ffffffffffffffff".to_string());
+    assert!(query_graph(&connection, missing_target).is_err());
+}
+
+#[test]
+fn graph_query_continuations_cover_large_graph_deterministically() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("pagination.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let mut scan = graph_resolution_scan("D:/pagination");
+    scan.symbols.clear();
+    scan.calls.clear();
+    scan.relations.clear();
+    scan.entry_points.clear();
+    for index in 1..=620 {
+        scan.symbols
+            .push(synthetic_function(index, &format!("node_{index}")));
+        if index < 620 {
+            scan.calls
+                .push(synthetic_call(index, index + 1, index as u64));
+        }
+    }
+    let project_id = write_index(&mut connection, &scan).unwrap();
+    let roots = (1..=620)
+        .map(|index| format!("sym:{index:016x}"))
+        .collect::<Vec<_>>();
+    let root_refs = roots.iter().map(String::as_str).collect::<Vec<_>>();
+    let mut request = graph_request(project_id, GraphKind::FunctionCalls, &root_refs);
+    request.direction = GraphDirection::Outgoing;
+    request.depth = 8;
+    let first = query_graph(&connection, request.clone()).unwrap();
+    assert_eq!(first.nodes.len(), 500);
+    assert!(first.truncated);
+    assert_eq!(first.truncation_reason.as_deref(), Some("node_limit"));
+    assert_eq!(first.statistics.original_node_count, 620);
+    let first_ids = first
+        .nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(first
+        .edges
+        .iter()
+        .all(|edge| first_ids.contains(edge.source.as_str())
+            && first_ids.contains(edge.target.as_str())));
+
+    request.continuation = first.continuation.clone();
+    let second = query_graph(&connection, request).unwrap();
+    assert_eq!(second.nodes.len(), 120);
+    assert!(!second.truncated);
+    let second_ids = second
+        .nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(first_ids.is_disjoint(&second_ids));
+    assert!(second
+        .edges
+        .iter()
+        .all(|edge| second_ids.contains(edge.source.as_str())
+            && second_ids.contains(edge.target.as_str())));
+    assert_eq!(first_ids.len() + second_ids.len(), 620);
+    assert_eq!(first.edges.len() + second.edges.len(), 618);
 }

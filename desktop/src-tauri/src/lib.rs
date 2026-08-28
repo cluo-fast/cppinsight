@@ -1513,7 +1513,7 @@ pub(crate) fn overview_from_scan(
                 .count() as u64,
         })
         .collect::<Vec<_>>();
-    hotspots.sort_by(|left, right| right.code_lines.cmp(&left.code_lines));
+    hotspots.sort_by_key(|item| std::cmp::Reverse(item.code_lines));
     hotspots.truncate(8);
 
     let mut symbols = scan.symbols.clone();
@@ -3401,8 +3401,12 @@ mod tests {
         super::migrate_database(&settings).unwrap();
         let backend = TestSecretBackend::default();
 
-        super::migrate_legacy_api_keys_from_paths(&settings, &[legacy_path.clone()], &backend)
-            .unwrap();
+        super::migrate_legacy_api_keys_from_paths(
+            &settings,
+            std::slice::from_ref(&legacy_path),
+            &backend,
+        )
+        .unwrap();
 
         assert_eq!(
             backend
