@@ -248,6 +248,10 @@ std::vector<SymbolInfo> readSymbols(const std::string& object, const std::filesy
         readUintField(item, "line", symbol.line);
         readStringField(item, "kind", symbol.kind);
         readStringField(item, "name", symbol.name);
+        readStringField(item, "qualified_name", symbol.qualifiedName);
+        readStringField(item, "stable_key", symbol.stableKey);
+        readStringField(item, "parent_qualified_name", symbol.parentQualifiedName);
+        readStringField(item, "parent_stable_key", symbol.parentStableKey);
         readStringField(item, "signature", symbol.signature);
         readStringField(item, "scope", symbol.scope);
         readBoolField(item, "is_definition", symbol.isDefinition);
@@ -286,12 +290,94 @@ std::vector<CallInfo> readCalls(const std::string& object, const std::filesystem
         call.filePath = file.empty() ? fallbackFile : std::filesystem::path(file);
         readUintField(item, "line", call.line);
         readStringField(item, "name", call.name);
+        readStringField(item, "target_qualified_name", call.targetQualifiedName);
+        readStringField(item, "caller_qualified_name", call.callerQualifiedName);
+        readStringField(item, "caller_stable_key", call.callerStableKey);
         if (!readStringField(item, "confidence", call.confidence)) {
             call.confidence = "heuristic";
         }
         calls.push_back(std::move(call));
     }
     return calls;
+}
+
+std::vector<SymbolRelationInfo> readRelations(
+    const std::string& object,
+    const std::filesystem::path& fallbackFile) {
+    std::vector<SymbolRelationInfo> relations;
+    const std::size_t arrayPos = object.find("\"relations\"");
+    if (arrayPos == std::string::npos) {
+        return relations;
+    }
+    std::size_t cursor = object.find('[', arrayPos);
+    if (cursor == std::string::npos) {
+        return relations;
+    }
+    const std::size_t arrayEnd = object.find(']', cursor);
+    if (arrayEnd == std::string::npos) {
+        return relations;
+    }
+    const std::string arrayText = object.substr(cursor, arrayEnd - cursor + 1);
+    cursor = 0;
+    while (cursor < arrayText.size()) {
+        const std::string item = extractArrayObject(arrayText, cursor);
+        if (item.empty()) {
+            break;
+        }
+        SymbolRelationInfo relation;
+        std::string file;
+        readStringField(item, "file", file);
+        relation.filePath = file.empty() ? fallbackFile : std::filesystem::path(file);
+        readUintField(item, "line", relation.line);
+        readStringField(item, "source_qualified_name", relation.sourceQualifiedName);
+        readStringField(item, "source_stable_key", relation.sourceStableKey);
+        readStringField(item, "target_name", relation.targetName);
+        readStringField(item, "kind", relation.kind);
+        if (!readStringField(item, "confidence", relation.confidence)) {
+            relation.confidence = "heuristic";
+        }
+        relations.push_back(std::move(relation));
+    }
+    return relations;
+}
+
+std::vector<EntryPointInfo> readEntryPoints(
+    const std::string& object,
+    const std::filesystem::path& fallbackFile) {
+    std::vector<EntryPointInfo> entries;
+    const std::size_t arrayPos = object.find("\"entry_points\"");
+    if (arrayPos == std::string::npos) {
+        return entries;
+    }
+    std::size_t cursor = object.find('[', arrayPos);
+    if (cursor == std::string::npos) {
+        return entries;
+    }
+    const std::size_t arrayEnd = object.find(']', cursor);
+    if (arrayEnd == std::string::npos) {
+        return entries;
+    }
+    const std::string arrayText = object.substr(cursor, arrayEnd - cursor + 1);
+    cursor = 0;
+    while (cursor < arrayText.size()) {
+        const std::string item = extractArrayObject(arrayText, cursor);
+        if (item.empty()) {
+            break;
+        }
+        EntryPointInfo entry;
+        std::string file;
+        readStringField(item, "file", file);
+        entry.filePath = file.empty() ? fallbackFile : std::filesystem::path(file);
+        readUintField(item, "line", entry.line);
+        readStringField(item, "qualified_name", entry.qualifiedName);
+        readStringField(item, "symbol_stable_key", entry.symbolStableKey);
+        readStringField(item, "kind", entry.kind);
+        if (!readStringField(item, "confidence", entry.confidence)) {
+            entry.confidence = "heuristic";
+        }
+        entries.push_back(std::move(entry));
+    }
+    return entries;
 }
 
 } // namespace
@@ -358,6 +444,8 @@ std::unordered_map<std::string, FileInfo> ScanCache::loadPreviousFiles(
         file.includes = readIncludes(object, file.relativePath);
         file.symbols = readSymbols(object, file.relativePath);
         file.calls = readCalls(object, file.relativePath);
+        file.relations = readRelations(object, file.relativePath);
+        file.entryPoints = readEntryPoints(object, file.relativePath);
         cached[file.relativePath.generic_string()] = std::move(file);
     }
 

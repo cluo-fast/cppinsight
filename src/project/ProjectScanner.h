@@ -25,6 +25,8 @@ struct ScanResult {
     std::vector<IncludeInfo> includes;
     std::vector<SymbolInfo> symbols;
     std::vector<CallInfo> calls;
+    std::vector<SymbolRelationInfo> relations;
+    std::vector<EntryPointInfo> entryPoints;
     std::vector<std::string> diagnostics;
     ScanStats stats;
     std::map<std::string, std::uint64_t> extensionCounts;

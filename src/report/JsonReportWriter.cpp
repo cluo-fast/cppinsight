@@ -44,6 +44,10 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
                    << "\"line\": " << symbol.line << ", "
                    << "\"kind\": \"" << escapeJson(symbol.kind) << "\", "
                    << "\"name\": \"" << escapeJson(symbol.name) << "\", "
+                   << "\"qualified_name\": \"" << escapeJson(symbol.qualifiedName) << "\", "
+                   << "\"stable_key\": \"" << escapeJson(symbol.stableKey) << "\", "
+                   << "\"parent_qualified_name\": \"" << escapeJson(symbol.parentQualifiedName) << "\", "
+                   << "\"parent_stable_key\": \"" << escapeJson(symbol.parentStableKey) << "\", "
                    << "\"signature\": \"" << escapeJson(symbol.signature) << "\", "
                    << "\"scope\": \"" << escapeJson(symbol.scope) << "\", "
                    << "\"is_definition\": " << (symbol.isDefinition ? "true" : "false") << ", "
@@ -63,9 +67,53 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
                    << "\"file\": \"" << escapeJson(call.filePath.generic_string()) << "\", "
                    << "\"line\": " << call.line << ", "
                    << "\"name\": \"" << escapeJson(call.name) << "\", "
+                   << "\"target_qualified_name\": \"" << escapeJson(call.targetQualifiedName) << "\", "
+                   << "\"caller_qualified_name\": \"" << escapeJson(call.callerQualifiedName) << "\", "
+                   << "\"caller_stable_key\": \"" << escapeJson(call.callerStableKey) << "\", "
                    << "\"confidence\": \"" << escapeJson(call.confidence) << "\""
                    << "}";
             if (index + 1 < calls.size()) {
+                output << ",";
+            }
+            output << "\n";
+        }
+    };
+
+    auto writeRelations = [&output](
+                              const std::vector<SymbolRelationInfo>& relations,
+                              const std::string& indent) {
+        for (std::size_t index = 0; index < relations.size(); ++index) {
+            const SymbolRelationInfo& relation = relations[index];
+            output << indent << "{"
+                   << "\"file\": \"" << escapeJson(relation.filePath.generic_string()) << "\", "
+                   << "\"line\": " << relation.line << ", "
+                   << "\"source_qualified_name\": \"" << escapeJson(relation.sourceQualifiedName) << "\", "
+                   << "\"source_stable_key\": \"" << escapeJson(relation.sourceStableKey) << "\", "
+                   << "\"target_name\": \"" << escapeJson(relation.targetName) << "\", "
+                   << "\"kind\": \"" << escapeJson(relation.kind) << "\", "
+                   << "\"confidence\": \"" << escapeJson(relation.confidence) << "\""
+                   << "}";
+            if (index + 1 < relations.size()) {
+                output << ",";
+            }
+            output << "\n";
+        }
+    };
+
+    auto writeEntryPoints = [&output](
+                               const std::vector<EntryPointInfo>& entryPoints,
+                               const std::string& indent) {
+        for (std::size_t index = 0; index < entryPoints.size(); ++index) {
+            const EntryPointInfo& entry = entryPoints[index];
+            output << indent << "{"
+                   << "\"file\": \"" << escapeJson(entry.filePath.generic_string()) << "\", "
+                   << "\"line\": " << entry.line << ", "
+                   << "\"qualified_name\": \"" << escapeJson(entry.qualifiedName) << "\", "
+                   << "\"symbol_stable_key\": \"" << escapeJson(entry.symbolStableKey) << "\", "
+                   << "\"kind\": \"" << escapeJson(entry.kind) << "\", "
+                   << "\"confidence\": \"" << escapeJson(entry.confidence) << "\""
+                   << "}";
+            if (index + 1 < entryPoints.size()) {
                 output << ",";
             }
             output << "\n";
@@ -83,7 +131,8 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
     };
 
     output << "{\n";
-    output << "  \"schema_version\": 2,\n";
+    output << "  \"schema_version\": 3,\n";
+    output << "  \"generator_version\": \"cppinsight-core/0.1.0\",\n";
     output << "  \"root\": \"" << escapeJson(result.rootPath.string()) << "\",\n";
     output << "  \"mode\": \"" << escapeJson(result.mode) << "\",\n";
     output << "  \"confidence\": \"" << escapeJson(result.confidence) << "\",\n";
@@ -126,6 +175,12 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
     output << "  \"calls\": [\n";
     writeCalls(result.calls, "    ");
     output << "  ],\n";
+    output << "  \"relations\": [\n";
+    writeRelations(result.relations, "    ");
+    output << "  ],\n";
+    output << "  \"entry_points\": [\n";
+    writeEntryPoints(result.entryPoints, "    ");
+    output << "  ],\n";
     output << "  \"files\": [\n";
 
     for (std::size_t index = 0; index < result.files.size(); ++index) {
@@ -152,6 +207,12 @@ void JsonReportWriter::write(const ScanResult& result, std::ostream& output) con
         output << "      ],\n";
         output << "      \"calls\": [\n";
         writeCalls(file.calls, "        ");
+        output << "      ],\n";
+        output << "      \"relations\": [\n";
+        writeRelations(file.relations, "        ");
+        output << "      ],\n";
+        output << "      \"entry_points\": [\n";
+        writeEntryPoints(file.entryPoints, "        ");
         output << "      ]\n";
         output << "    }";
 

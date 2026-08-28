@@ -67,7 +67,7 @@
 - Stable-key canonical input: `kind + "\n" + normalized_file + "\n" + qualified_name + "\n" + normalized_signature`; ID format is `sym:` followed by 16 lowercase hexadecimal FNV-1a-64 digits.
 - Consumes later: Rust `ScanResult` deserialization and normalization in Task 3.
 
-- [ ] **Step 1: Write failing scanner ownership and stable-key tests**
+- [x] **Step 1: Write failing scanner ownership and stable-key tests**
 
 Add a fixture containing a namespace, base type, interface-like pure-virtual type, composed field, overloaded methods, a multi-line function body, and `main`. Assert:
 
@@ -87,7 +87,7 @@ require(hasEntry(result, "main", "program"), "main should be an entry point fact
 
 Scan the same unchanged fixture twice and assert every `(qualifiedName, stableKey)` pair is identical. Add one blank line before the symbols, scan again, and assert stable keys remain identical because line numbers are not part of the canonical key.
 
-- [ ] **Step 2: Run the C++ test to verify the new contract fails**
+- [x] **Step 2: Run the C++ test to verify the new contract fails**
 
 Run:
 
@@ -99,7 +99,7 @@ ctest --test-dir build-graph-data --output-on-failure
 
 Expected: compilation fails because the schema-3 fields and helper fact types do not exist.
 
-- [ ] **Step 3: Add exact schema-3 fact types and stable-key helper**
+- [x] **Step 3: Add exact schema-3 fact types and stable-key helper**
 
 Add the following fields and facts in `FileInfo.h`:
 
@@ -151,7 +151,7 @@ struct EntryPointInfo {
 
 Add `relations` and `entryPoints` to `FileInfo` and `ScanResult`. Implement a private FNV-1a helper that hashes the exact canonical string, normalizes `\\` to `/`, collapses whitespace in signatures, and emits lowercase fixed-width hex.
 
-- [ ] **Step 4: Track namespace/type/function ownership and relation evidence**
+- [x] **Step 4: Track namespace/type/function ownership and relation evidence**
 
 Use brace-depth scopes so calls on lines after a function declaration keep the enclosing function until its closing brace. Build qualified names as:
 
@@ -163,7 +163,7 @@ namespace::free_function
 
 Parse class base lists from `class Name : public Base, virtual Interface {` and emit `inherits` for concrete bases and `implements` when the unqualified base name starts with `I` followed by an uppercase character or the base declaration contains `= 0`. Parse class-scope field declarations ending in `;` and emit `contains` for value members and `uses` for pointer/reference members. Emit `uses` for type names in function signatures. Keep every heuristic relation at `confidence = "heuristic"`.
 
-- [ ] **Step 5: Serialize and cache every new field**
+- [x] **Step 5: Serialize and cache every new field**
 
 Change the JSON header to:
 
@@ -176,7 +176,7 @@ Change the JSON header to:
 
 Serialize top-level and per-file `relations` and `entry_points`. Update `ScanCache.cpp` readers so missing keys produce empty strings/vectors, allowing schema-2 cache files to remain readable.
 
-- [ ] **Step 6: Run focused and full C++ verification**
+- [x] **Step 6: Run focused and full C++ verification**
 
 Run:
 
@@ -187,7 +187,7 @@ ctest --test-dir build-graph-data --output-on-failure
 
 Expected: `cppinsight_tests` passes, including stable-key, qualified owner, relation and schema-version assertions.
 
-- [ ] **Step 7: Commit the scanner contract**
+- [x] **Step 7: Commit the scanner contract**
 
 ```bash
 git add src/project/FileInfo.h src/project/ProjectScanner.h src/project/ProjectScanner.cpp src/project/ScanCache.cpp src/report/JsonReportWriter.cpp tests/ProjectScannerTests.cpp

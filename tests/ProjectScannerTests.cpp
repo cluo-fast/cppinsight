@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -90,6 +91,75 @@ bool hasCall(const cppinsight::ScanResult& result, const std::string& name) {
         }
     }
     return false;
+}
+
+const cppinsight::SymbolInfo* findQualifiedSymbol(
+    const cppinsight::ScanResult& result,
+    const std::string& qualifiedName) {
+    for (const cppinsight::SymbolInfo& symbol : result.symbols) {
+        if (symbol.qualifiedName == qualifiedName) {
+            return &symbol;
+        }
+    }
+    return nullptr;
+}
+
+bool hasRelation(
+    const cppinsight::ScanResult& result,
+    const std::string& source,
+    const std::string& target,
+    const std::string& kind) {
+    for (const cppinsight::SymbolRelationInfo& relation : result.relations) {
+        if (relation.sourceQualifiedName == source &&
+            relation.targetName == target &&
+            relation.kind == kind &&
+            !relation.filePath.empty() &&
+            relation.line > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasOwnedCall(
+    const cppinsight::ScanResult& result,
+    const std::string& caller,
+    const std::string& target) {
+    for (const cppinsight::CallInfo& call : result.calls) {
+        if (call.callerQualifiedName == caller &&
+            call.name == target &&
+            !call.callerStableKey.empty()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool hasEntry(
+    const cppinsight::ScanResult& result,
+    const std::string& qualifiedName,
+    const std::string& kind) {
+    for (const cppinsight::EntryPointInfo& entry : result.entryPoints) {
+        if (entry.qualifiedName == qualifiedName &&
+            entry.kind == kind &&
+            !entry.symbolStableKey.empty() &&
+            !entry.filePath.empty() &&
+            entry.line > 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::map<std::string, std::string> stableKeysByQualifiedName(
+    const cppinsight::ScanResult& result) {
+    std::map<std::string, std::string> keys;
+    for (const cppinsight::SymbolInfo& symbol : result.symbols) {
+        if (!symbol.qualifiedName.empty()) {
+            keys[symbol.qualifiedName + "\n" + symbol.signature] = symbol.stableKey;
+        }
+    }
+    return keys;
 }
 
 void testScannerFindsProjectInventory() {
@@ -206,7 +276,9 @@ void testJsonWriterEscapesAndEmitsAnalysisContract() {
     writer.write(result, output);
     const std::string json = output.str();
 
-    require(json.find("\"schema_version\": 2") != std::string::npos, "JSON should include schema version 2");
+    require(json.find("\"schema_version\": 3") != std::string::npos, "JSON should include schema version 3");
+    require(json.find("\"generator_version\": \"cppinsight-core/0.1.0\"") != std::string::npos,
+            "JSON should include the scanner generator version");
     require(json.find("\"mode\": \"heuristic\"") != std::string::npos, "JSON should include mode");
     require(json.find("\"confidence\"") != std::string::npos, "JSON should include confidence");
     require(json.find("\"second_level_layout\"") != std::string::npos, "JSON should include second_level_layout");
@@ -214,6 +286,8 @@ void testJsonWriterEscapesAndEmitsAnalysisContract() {
     require(json.find("\"includes\"") != std::string::npos, "JSON should include includes");
     require(json.find("\"symbols\"") != std::string::npos, "JSON should include symbols");
     require(json.find("\"calls\"") != std::string::npos, "JSON should include calls");
+    require(json.find("\"relations\"") != std::string::npos, "JSON should include symbol relations");
+    require(json.find("\"entry_points\"") != std::string::npos, "JSON should include entry points");
     require(json.find("bad \\\"thing\\\"\\nnext") != std::string::npos, "JSON should escape diagnostics");
 
     // GBK-like bytes must become \\u00xx escapes so the JSON file is valid UTF-8.
@@ -226,6 +300,75 @@ void testJsonWriterEscapesAndEmitsAnalysisContract() {
             "JSON should escape non-UTF-8 bytes");
     require(safeJson.find("\xC4\xE3") == std::string::npos,
             "JSON must not embed raw non-UTF-8 bytes");
+}
+
+void testScannerEmitsStableOwnedGraphFacts() {
+    const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / ("cppinsight_graph_facts_" + std::to_string(stamp));
+    const std::filesystem::path source = root / "src" / "main.cpp";
+
+    const std::string code =
+        "namespace app {\n"
+        "struct Base {};\n"
+        "struct Widget {};\n"
+        "struct IService { virtual void execute() = 0; };\n"
+        "class Runner : public Base, public IService {\n"
+        "    Widget widget_;\n"
+        "    Widget* borrowed_;\n"
+        "public:\n"
+        "    void run();\n"
+        "    Widget build(const Base& base);\n"
+        "    void overloaded(int value);\n"
+        "    void overloaded(double value);\n"
+        "};\n"
+        "void Runner::run() {\n"
+        "    helper();\n"
+        "}\n"
+        "}\n"
+        "int main() {\n"
+        "    app::Runner runner;\n"
+        "    runner.run();\n"
+        "}\n";
+    writeFile(source, code);
+
+    const cppinsight::ScanResult first = cppinsight::ProjectScanner().scan(root);
+    const cppinsight::SymbolInfo* runner = findQualifiedSymbol(first, "app::Runner");
+    require(runner != nullptr, "Runner should have a qualified name");
+    require(runner->stableKey.rfind("sym:", 0) == 0, "symbol should have a stable key prefix");
+    require(runner->stableKey.size() == 20, "stable key should contain 16 hexadecimal digits");
+    require(hasRelation(first, "app::Runner", "app::Base", "inherits"),
+            "class base should emit inheritance evidence");
+    require(hasRelation(first, "app::Runner", "app::IService", "implements"),
+            "interface-like base should emit implements evidence");
+    require(hasRelation(first, "app::Runner", "app::Widget", "contains"),
+            "value field should emit composition evidence");
+    require(hasRelation(first, "app::Runner", "app::Widget", "uses"),
+            "pointer field should emit uses evidence");
+    require(hasRelation(first, "app::Runner", "app::Base", "uses"),
+            "method signature should emit a class uses relation");
+    require(hasOwnedCall(first, "app::Runner::run", "helper"),
+            "call should retain its enclosing function");
+    require(hasEntry(first, "main", "program"), "main should be a program entry fact");
+
+    const std::map<std::string, std::string> firstKeys = stableKeysByQualifiedName(first);
+    writeFile(source, "\n" + code);
+    const cppinsight::ScanResult shifted = cppinsight::ProjectScanner().scan(root);
+    require(stableKeysByQualifiedName(shifted) == firstKeys,
+            "stable keys should not change after a harmless line shift");
+
+    const std::filesystem::path jsonPath = root / ".cppinsight" / "scan.json";
+    cppinsight::JsonReportWriter().writeFile(shifted, jsonPath);
+    cppinsight::ScanOptions options;
+    options.previousScanJson = jsonPath;
+    options.showProgress = false;
+    const cppinsight::ScanResult cached = cppinsight::ProjectScanner().scan(root, options);
+    require(hasOwnedCall(cached, "app::Runner::run", "helper"),
+            "incremental cache should preserve call ownership");
+    require(hasRelation(cached, "app::Runner", "app::Base", "inherits"),
+            "incremental cache should preserve symbol relations");
+
+    std::filesystem::remove_all(root);
 }
 
 } // namespace
@@ -270,6 +413,7 @@ int main() {
         testIncrementalReuse();
         testCompileCommandsHybridMode();
         testJsonWriterEscapesAndEmitsAnalysisContract();
+        testScannerEmitsStableOwnedGraphFacts();
         testScannerSurvivesPathologicalRegexLines();
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';

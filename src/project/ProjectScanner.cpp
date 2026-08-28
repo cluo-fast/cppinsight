@@ -7,7 +7,9 @@
 #include <cctype>
 #include <chrono>
 #include <fstream>
+#include <iomanip>
 #include <iterator>
+#include <optional>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -24,12 +26,34 @@ struct FileAnalysis {
     std::vector<IncludeInfo> includes;
     std::vector<SymbolInfo> symbols;
     std::vector<CallInfo> calls;
+    std::vector<SymbolRelationInfo> relations;
+    std::vector<EntryPointInfo> entryPoints;
     std::vector<std::string> diagnostics;
 };
 
 struct NamespaceScope {
     std::string name;
     int depth = 0;
+};
+
+struct TypeScope {
+    std::string name;
+    std::string qualifiedName;
+    std::string stableKey;
+    int depth = 0;
+};
+
+struct FunctionScope {
+    std::string qualifiedName;
+    std::string stableKey;
+    int depth = 0;
+};
+
+struct ExtractedFunction {
+    std::string name;
+    std::string qualifiedName;
+    std::string stableKey;
+    bool hasBody = false;
 };
 
 bool isWhitespaceOnly(std::string_view line) {
@@ -274,6 +298,103 @@ std::string currentScope(const std::vector<NamespaceScope>& namespaceScopes) {
     return output.str();
 }
 
+std::string joinQualified(const std::string& scope, const std::string& name) {
+    if (scope.empty()) {
+        return name;
+    }
+    if (name.empty()) {
+        return scope;
+    }
+    return scope + "::" + name;
+}
+
+std::string currentQualifiedScope(
+    const std::vector<NamespaceScope>& namespaceScopes,
+    const std::vector<TypeScope>& typeScopes) {
+    std::string scope = currentScope(namespaceScopes);
+    for (const TypeScope& type : typeScopes) {
+        scope = joinQualified(scope, type.name);
+    }
+    return scope;
+}
+
+std::string parentQualifiedName(const std::string& qualifiedName) {
+    const std::size_t separator = qualifiedName.rfind("::");
+    return separator == std::string::npos ? std::string() : qualifiedName.substr(0, separator);
+}
+
+std::string normalizeSignature(std::string_view signature) {
+    std::string normalized;
+    normalized.reserve(signature.size());
+    bool pendingSpace = false;
+    for (unsigned char character : signature) {
+        if (std::isspace(character) != 0) {
+            pendingSpace = !normalized.empty();
+            continue;
+        }
+        if (pendingSpace) {
+            normalized.push_back(' ');
+            pendingSpace = false;
+        }
+        normalized.push_back(static_cast<char>(character));
+    }
+    return normalized;
+}
+
+std::string normalizedPath(const std::filesystem::path& path) {
+    return path.lexically_normal().generic_string();
+}
+
+std::string stableSymbolKey(
+    const std::filesystem::path& file,
+    const std::string& kind,
+    const std::string& qualifiedName,
+    const std::string& signature) {
+    const std::string canonical =
+        kind + "\n" + normalizedPath(file) + "\n" + qualifiedName + "\n" +
+        normalizeSignature(signature);
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (unsigned char character : canonical) {
+        hash ^= static_cast<std::uint64_t>(character);
+        hash *= 1099511628211ULL;
+    }
+    std::ostringstream output;
+    output << "sym:" << std::hex << std::nouppercase << std::setw(16)
+           << std::setfill('0') << hash;
+    return output.str();
+}
+
+std::string stableKeyForQualifiedName(
+    const std::vector<SymbolInfo>& symbols,
+    const std::string& qualifiedName) {
+    for (auto iterator = symbols.rbegin(); iterator != symbols.rend(); ++iterator) {
+        if (iterator->qualifiedName == qualifiedName && iterator->isDefinition) {
+            return iterator->stableKey;
+        }
+    }
+    for (auto iterator = symbols.rbegin(); iterator != symbols.rend(); ++iterator) {
+        if (iterator->qualifiedName == qualifiedName) {
+            return iterator->stableKey;
+        }
+    }
+    return {};
+}
+
+std::string qualifyTypeName(const std::string& rawName, const std::string& sourceType) {
+    std::string target = trim(rawName);
+    while (target.rfind("::", 0) == 0) {
+        target.erase(0, 2);
+    }
+    const std::size_t templateOpen = target.find('<');
+    if (templateOpen != std::string::npos) {
+        target = trim(target.substr(0, templateOpen));
+    }
+    if (target.empty() || target.find("::") != std::string::npos) {
+        return target;
+    }
+    return joinQualified(parentQualifiedName(sourceType), target);
+}
+
 int countCharacter(const std::string& value, char expected) {
     return static_cast<int>(std::count(value.begin(), value.end(), expected));
 }
@@ -426,50 +547,72 @@ bool extractTypeSymbol(
         symbol.kind = "enum";
     }
     symbol.name = match[2].str();
+    symbol.qualifiedName = joinQualified(scope, symbol.name);
     symbol.signature = trim(code);
     symbol.scope = scope;
     symbol.isDefinition = code.find('{') != std::string::npos;
     symbol.confidence = "heuristic";
+    symbol.parentQualifiedName = scope;
+    symbol.parentStableKey = stableKeyForQualifiedName(symbols, scope);
+    symbol.stableKey = stableSymbolKey(
+        relativePath, symbol.kind, symbol.qualifiedName, symbol.signature);
     symbols.push_back(std::move(symbol));
     return true;
 }
 
-std::string extractFunctionSymbol(
+std::string extractCallablePath(const std::string& declarator) {
+    const std::string trimmed = trim(declarator);
+    std::size_t end = trimmed.size();
+    while (end > 0 && std::isspace(static_cast<unsigned char>(trimmed[end - 1])) != 0) {
+        --end;
+    }
+    std::size_t start = end;
+    while (start > 0) {
+        const unsigned char character = static_cast<unsigned char>(trimmed[start - 1]);
+        if (!isIdentifierPart(character) && character != ':') {
+            break;
+        }
+        --start;
+    }
+    return trim(trimmed.substr(start, end - start));
+}
+
+ExtractedFunction extractFunctionSymbol(
     const std::string& code,
     const std::filesystem::path& relativePath,
     std::uint64_t lineNumber,
     const std::string& scope,
     std::vector<SymbolInfo>& symbols) {
     if (!looksLikeFunctionLine(code)) {
-        return {};
+        return ExtractedFunction{};
     }
 
     const std::string trimmedLine = trim(code);
     const std::size_t openParen = trimmedLine.find('(');
     if (openParen == std::string::npos || openParen == 0) {
-        return {};
+        return ExtractedFunction{};
     }
     if (findMatchingParen(trimmedLine, openParen) == std::string::npos) {
-        return {};
+        return ExtractedFunction{};
     }
 
     const std::string declarator = stripLeadingTemplate(trimmedLine.substr(0, openParen));
     const std::string name = extractFunctionName(declarator);
     if (name.empty()) {
-        return {};
+        return ExtractedFunction{};
     }
 
     static const std::set<std::string> keywords = {
         "if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "decltype"
     };
     if (contains(keywords, name)) {
-        return {};
+        return ExtractedFunction{};
     }
 
     const bool hasBody = trimmedLine.find('{') != std::string::npos;
     const bool hasDeclarationTerminator = trimmedLine.find(';') != std::string::npos;
     if (!hasBody && !hasDeclarationTerminator) {
-        return {};
+        return ExtractedFunction{};
     }
 
     // Bare `foo();` calls look like declarations; require a return type, scope, or destructor.
@@ -478,7 +621,7 @@ std::string extractFunctionSymbol(
         declarator.find("::") != std::string::npos ||
         (!declarator.empty() && declarator[0] == '~');
     if (!hasTypeOrScope && !hasBody) {
-        return {};
+        return ExtractedFunction{};
     }
 
     SymbolInfo symbol;
@@ -486,12 +629,26 @@ std::string extractFunctionSymbol(
     symbol.line = lineNumber;
     symbol.kind = "function";
     symbol.name = name;
+    const std::string callablePath = extractCallablePath(declarator);
+    symbol.qualifiedName = callablePath.find("::") == std::string::npos
+        ? joinQualified(scope, name)
+        : joinQualified(scope, callablePath);
     symbol.signature = trimmedLine;
     symbol.scope = scope;
     symbol.isDefinition = hasBody;
     symbol.confidence = "heuristic";
+    symbol.parentQualifiedName = parentQualifiedName(symbol.qualifiedName);
+    symbol.parentStableKey = stableKeyForQualifiedName(symbols, symbol.parentQualifiedName);
+    symbol.stableKey = stableSymbolKey(
+        relativePath, symbol.kind, symbol.qualifiedName, symbol.signature);
+    ExtractedFunction extracted{
+        symbol.name,
+        symbol.qualifiedName,
+        symbol.stableKey,
+        hasBody,
+    };
     symbols.push_back(std::move(symbol));
-    return name;
+    return extracted;
 }
 
 void extractCalls(
@@ -499,6 +656,8 @@ void extractCalls(
     const std::filesystem::path& relativePath,
     std::uint64_t lineNumber,
     const std::string& functionSymbolOnLine,
+    const std::string& callerQualifiedName,
+    const std::string& callerStableKey,
     std::vector<CallInfo>& calls) {
     static const std::set<std::string> ignoredNames = {
         "if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "decltype",
@@ -544,9 +703,172 @@ void extractCalls(
         call.filePath = relativePath;
         call.line = lineNumber;
         call.name = name;
+        call.targetQualifiedName = name;
+        call.callerQualifiedName = callerQualifiedName;
+        call.callerStableKey = callerStableKey;
         call.confidence = "heuristic";
         calls.push_back(std::move(call));
     }
+}
+
+void extractBaseRelations(
+    const std::string& code,
+    const SymbolInfo& source,
+    const std::unordered_set<std::string>& abstractTypes,
+    std::vector<SymbolRelationInfo>& relations) {
+    const std::size_t colon = code.find(':');
+    const std::size_t body = code.find('{');
+    if (colon == std::string::npos || body == std::string::npos || colon >= body) {
+        return;
+    }
+
+    std::stringstream bases(code.substr(colon + 1, body - colon - 1));
+    std::string base;
+    while (std::getline(bases, base, ',')) {
+        static const std::regex modifierRegex(R"(\b(public|protected|private|virtual)\b)");
+        try {
+            base = std::regex_replace(base, modifierRegex, " ");
+        } catch (const std::regex_error&) {
+            continue;
+        }
+        const std::string target = qualifyTypeName(base, source.qualifiedName);
+        if (target.empty()) {
+            continue;
+        }
+        const std::string unqualified = target.substr(target.rfind("::") == std::string::npos
+            ? 0
+            : target.rfind("::") + 2);
+        const bool interfaceName = unqualified.size() > 1 && unqualified[0] == 'I' &&
+            std::isupper(static_cast<unsigned char>(unqualified[1])) != 0;
+
+        SymbolRelationInfo relation;
+        relation.filePath = source.filePath;
+        relation.line = source.line;
+        relation.sourceQualifiedName = source.qualifiedName;
+        relation.sourceStableKey = source.stableKey;
+        relation.targetName = target;
+        relation.kind = interfaceName || abstractTypes.find(target) != abstractTypes.end()
+            ? "implements"
+            : "inherits";
+        relation.confidence = "heuristic";
+        relations.push_back(std::move(relation));
+    }
+}
+
+void extractFieldRelation(
+    const std::string& code,
+    const TypeScope& source,
+    const std::filesystem::path& relativePath,
+    std::uint64_t lineNumber,
+    std::vector<SymbolRelationInfo>& relations) {
+    if (code.find('(') != std::string::npos || code.find(';') == std::string::npos) {
+        return;
+    }
+    static const std::regex fieldRegex(
+        R"(^\s*(?:mutable\s+|static\s+|const\s+)*([A-Za-z_][A-Za-z0-9_:]*(?:\s*<[^;(){}]+>)?)\s*([*&]+)?\s+[A-Za-z_][A-Za-z0-9_]*\s*(?:[;={]))");
+    std::smatch match;
+    try {
+        if (!std::regex_search(code, match, fieldRegex)) {
+            return;
+        }
+    } catch (const std::regex_error&) {
+        return;
+    }
+
+    const std::string rawTarget = trim(match[1].str());
+    static const std::unordered_set<std::string> primitiveTypes = {
+        "bool", "char", "double", "float", "int", "long", "short", "signed", "unsigned",
+        "size_t", "std::size_t", "auto", "void"
+    };
+    if (primitiveTypes.find(rawTarget) != primitiveTypes.end()) {
+        return;
+    }
+
+    SymbolRelationInfo relation;
+    relation.filePath = relativePath;
+    relation.line = lineNumber;
+    relation.sourceQualifiedName = source.qualifiedName;
+    relation.sourceStableKey = source.stableKey;
+    relation.targetName = qualifyTypeName(rawTarget, source.qualifiedName);
+    relation.kind = match[2].matched ? "uses" : "contains";
+    relation.confidence = "heuristic";
+    relations.push_back(std::move(relation));
+}
+
+bool containsIdentifier(const std::string& text, const std::string& identifier) {
+    if (identifier.empty()) {
+        return false;
+    }
+    std::size_t position = text.find(identifier);
+    while (position != std::string::npos) {
+        const bool startsClean = position == 0 ||
+            !isIdentifierPart(static_cast<unsigned char>(text[position - 1]));
+        const std::size_t end = position + identifier.size();
+        const bool endsClean = end == text.size() ||
+            !isIdentifierPart(static_cast<unsigned char>(text[end]));
+        if (startsClean && endsClean) {
+            return true;
+        }
+        position = text.find(identifier, position + 1);
+    }
+    return false;
+}
+
+void extractSignatureRelations(
+    const std::string& code,
+    const TypeScope& source,
+    const std::filesystem::path& relativePath,
+    std::uint64_t lineNumber,
+    const std::vector<SymbolInfo>& symbols,
+    std::vector<SymbolRelationInfo>& relations) {
+    std::set<std::string> emitted;
+    for (const SymbolInfo& candidate : symbols) {
+        if ((candidate.kind != "class" && candidate.kind != "struct" && candidate.kind != "enum") ||
+            candidate.qualifiedName == source.qualifiedName ||
+            !emitted.insert(candidate.qualifiedName).second) {
+            continue;
+        }
+        if (!containsIdentifier(code, candidate.name) &&
+            !containsIdentifier(code, candidate.qualifiedName)) {
+            continue;
+        }
+
+        SymbolRelationInfo relation;
+        relation.filePath = relativePath;
+        relation.line = lineNumber;
+        relation.sourceQualifiedName = source.qualifiedName;
+        relation.sourceStableKey = source.stableKey;
+        relation.targetName = candidate.qualifiedName;
+        relation.kind = "uses";
+        relation.confidence = "heuristic";
+        relations.push_back(std::move(relation));
+    }
+}
+
+std::optional<EntryPointInfo> entryPointFor(const SymbolInfo& symbol) {
+    if (!symbol.isDefinition || symbol.kind != "function") {
+        return std::nullopt;
+    }
+    const std::string& name = symbol.name;
+    std::string kind;
+    if (name == "main" || name == "WinMain" || name == "wWinMain") {
+        kind = "program";
+    } else if (name == "DllMain") {
+        kind = "library";
+    } else if (name == "test_main" || name == "run_tests") {
+        kind = "test";
+    } else {
+        return std::nullopt;
+    }
+
+    EntryPointInfo entry;
+    entry.filePath = symbol.filePath;
+    entry.line = symbol.line;
+    entry.qualifiedName = symbol.qualifiedName;
+    entry.symbolStableKey = symbol.stableKey;
+    entry.kind = kind;
+    entry.confidence = symbol.confidence;
+    return entry;
 }
 
 FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::filesystem::path& relativePath) {
@@ -563,6 +885,9 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
     int braceDepth = 0;
     std::uint64_t lineNumber = 0;
     std::vector<NamespaceScope> namespaceScopes;
+    std::vector<TypeScope> typeScopes;
+    std::vector<FunctionScope> functionScopes;
+    std::unordered_set<std::string> abstractTypes;
 
     std::string buffer;
     while (std::getline(input, buffer)) {
@@ -572,17 +897,93 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
         const std::string codeWithStrings =
             stripCommentsPreserveStrings(buffer, insideBlockCommentForAnalysis);
         const std::string code = blankStringLiteralContents(codeWithStrings);
-        const std::string scope = currentScope(namespaceScopes);
+        const std::string scope = currentQualifiedScope(namespaceScopes, typeScopes);
 
         try {
             extractInclude(codeWithStrings, relativePath, lineNumber, analysis.includes);
+            if (!typeScopes.empty() && functionScopes.empty()) {
+                extractFieldRelation(
+                    code,
+                    typeScopes.back(),
+                    relativePath,
+                    lineNumber,
+                    analysis.relations);
+            }
             const bool isTypeSymbol =
                 extractTypeSymbol(code, relativePath, lineNumber, scope, analysis.symbols);
-            const std::string functionSymbolOnLine =
-                isTypeSymbol ? std::string()
-                             : extractFunctionSymbol(
-                                   code, relativePath, lineNumber, scope, analysis.symbols);
-            extractCalls(code, relativePath, lineNumber, functionSymbolOnLine, analysis.calls);
+            if (isTypeSymbol) {
+                const SymbolInfo& type = analysis.symbols.back();
+                if (code.find("= 0") != std::string::npos || code.find("=0") != std::string::npos) {
+                    abstractTypes.insert(type.qualifiedName);
+                }
+                extractBaseRelations(code, type, abstractTypes, analysis.relations);
+                if (type.isDefinition) {
+                    typeScopes.push_back(TypeScope{
+                        type.name,
+                        type.qualifiedName,
+                        type.stableKey,
+                        braceDepth + 1,
+                    });
+                }
+            }
+
+            const ExtractedFunction function = isTypeSymbol
+                ? ExtractedFunction{}
+                : extractFunctionSymbol(
+                      code, relativePath, lineNumber, scope, analysis.symbols);
+            if (!function.name.empty()) {
+                const SymbolInfo& symbol = analysis.symbols.back();
+                if (!typeScopes.empty()) {
+                    extractSignatureRelations(
+                        code,
+                        typeScopes.back(),
+                        relativePath,
+                        lineNumber,
+                        analysis.symbols,
+                        analysis.relations);
+                } else if (!symbol.parentStableKey.empty()) {
+                    extractSignatureRelations(
+                        code,
+                        TypeScope{
+                            symbol.parentQualifiedName.substr(
+                                symbol.parentQualifiedName.rfind("::") == std::string::npos
+                                    ? 0
+                                    : symbol.parentQualifiedName.rfind("::") + 2),
+                            symbol.parentQualifiedName,
+                            symbol.parentStableKey,
+                            braceDepth,
+                        },
+                        relativePath,
+                        lineNumber,
+                        analysis.symbols,
+                        analysis.relations);
+                }
+                if (const std::optional<EntryPointInfo> entry = entryPointFor(symbol)) {
+                    analysis.entryPoints.push_back(*entry);
+                }
+                if (function.hasBody) {
+                    functionScopes.push_back(FunctionScope{
+                        function.qualifiedName,
+                        function.stableKey,
+                        braceDepth + 1,
+                    });
+                }
+            }
+
+            const std::string callerQualifiedName = !function.name.empty()
+                ? function.qualifiedName
+                : (functionScopes.empty() ? std::string() : functionScopes.back().qualifiedName);
+            const std::string callerStableKey = !function.name.empty()
+                ? function.stableKey
+                : (functionScopes.empty() ? std::string() : functionScopes.back().stableKey);
+            extractCalls(
+                code,
+                relativePath,
+                lineNumber,
+                function.name,
+                callerQualifiedName,
+                callerStableKey,
+                analysis.calls);
 
             static const std::regex namespaceRegex(R"(^\s*namespace\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{)");
             std::smatch namespaceMatch;
@@ -605,6 +1006,12 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
 
         while (!namespaceScopes.empty() && braceDepth < namespaceScopes.back().depth) {
             namespaceScopes.pop_back();
+        }
+        while (!typeScopes.empty() && braceDepth < typeScopes.back().depth) {
+            typeScopes.pop_back();
+        }
+        while (!functionScopes.empty() && braceDepth < functionScopes.back().depth) {
+            functionScopes.pop_back();
         }
     }
 
@@ -727,6 +1134,8 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
             file.includes = analysis.includes;
             file.symbols = analysis.symbols;
             file.calls = analysis.calls;
+            file.relations = analysis.relations;
+            file.entryPoints = analysis.entryPoints;
             appendAll(result.diagnostics, analysis.diagnostics);
             ++progress.filesAnalyzed;
         }
@@ -741,6 +1150,8 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
         appendAll(result.includes, file.includes);
         appendAll(result.symbols, file.symbols);
         appendAll(result.calls, file.calls);
+        appendAll(result.relations, file.relations);
+        appendAll(result.entryPoints, file.entryPoints);
 
         result.stats.totalBytes += file.sizeBytes;
         addLineMetrics(result.stats.lines, file.lines);
@@ -769,9 +1180,13 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
 
         result.symbols.clear();
         result.calls.clear();
+        result.relations.clear();
+        result.entryPoints.clear();
         for (const FileInfo& file : result.files) {
             appendAll(result.symbols, file.symbols);
             appendAll(result.calls, file.calls);
+            appendAll(result.relations, file.relations);
+            appendAll(result.entryPoints, file.entryPoints);
         }
     }
 
