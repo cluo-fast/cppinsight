@@ -615,7 +615,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml
 
 Expected: five graph-kind tests, analytics, filters, depth, truncation and all legacy tests pass.
 
-- [ ] **Step 7: Commit the graph query engine**
+- [x] **Step 7: Commit the graph query engine**
 
 ```bash
 git add desktop/src-tauri/src/graph.rs desktop/src-tauri/src/index.rs desktop/src-tauri/tests/graph_protocol.rs
@@ -639,11 +639,11 @@ git commit -m "feat: query bounded code relationship graphs"
 - Produces: `query_graph(root, request)`, `save_graph_layout(root, layout)`, and `load_graph_layout(root, project_id, graph_kind, view_key)` Tauri commands.
 - Produces: TypeScript types that exactly mirror Rust serialized names.
 
-- [ ] **Step 1: Write failing layout round-trip and replacement tests**
+- [x] **Step 1: Write failing layout round-trip and replacement tests**
 
 Save positions for two stable nodes, load them, replace one view key, and assert unrelated graph/view keys remain unchanged. Reject a layout with protocol version other than `1`, an empty view key, more than `500` positions, non-finite coordinates, or node IDs not matching a stable graph-node prefix.
 
-- [ ] **Step 2: Run layout tests to verify they fail**
+- [x] **Step 2: Run layout tests to verify they fail**
 
 Run:
 
@@ -653,11 +653,11 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol gr
 
 Expected: saved-layout functions are missing.
 
-- [ ] **Step 3: Implement store methods and non-blocking commands**
+- [x] **Step 3: Implement store methods and non-blocking commands**
 
 Use `INSERT ... ON CONFLICT ... DO UPDATE` for layout replacement. Run graph queries and layout SQLite access through `tauri::async_runtime::spawn_blocking`. Register all three commands in `generate_handler!`.
 
-- [ ] **Step 4: Add exact TypeScript protocol and API wrappers**
+- [x] **Step 4: Add exact TypeScript protocol and API wrappers**
 
 Add discriminated string unions and interfaces matching Rust, then expose:
 
@@ -682,7 +682,7 @@ export function loadGraphLayout(
 }
 ```
 
-- [ ] **Step 5: Run Rust and TypeScript checks**
+- [x] **Step 5: Run Rust and TypeScript checks**
 
 Run:
 

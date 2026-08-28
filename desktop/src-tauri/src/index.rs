@@ -1,9 +1,92 @@
+use crate::graph::{GraphKind, GraphQueryError, SavedGraphLayout};
 use crate::{build_chunks, sql_error, ScanResult, SymbolInfo};
 use chrono::Utc;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use std::collections::HashMap;
 
 pub const INDEX_SCHEMA_VERSION: u32 = 3;
+
+pub fn save_graph_layout(
+    connection: &Connection,
+    mut layout: SavedGraphLayout,
+) -> Result<(), GraphQueryError> {
+    layout.validate()?;
+    layout.updated_at = Utc::now().to_rfc3339();
+    let positions_json = serde_json::to_string(&layout.positions).map_err(|error| {
+        GraphQueryError::Store(format!("failed to encode graph layout: {error}"))
+    })?;
+    connection
+        .execute(
+            "INSERT INTO graph_layouts(
+                project_id, graph_kind, view_key, protocol_version,
+                positions_json, updated_at
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(project_id, graph_kind, view_key) DO UPDATE SET
+                protocol_version = excluded.protocol_version,
+                positions_json = excluded.positions_json,
+                updated_at = excluded.updated_at",
+            params![
+                layout.project_id,
+                layout.graph_kind.as_storage_key(),
+                layout.view_key,
+                layout.protocol_version as i64,
+                positions_json,
+                layout.updated_at,
+            ],
+        )
+        .map_err(|error| GraphQueryError::Store(sql_error(error)))?;
+    Ok(())
+}
+
+pub fn load_graph_layout(
+    connection: &Connection,
+    project_id: i64,
+    graph_kind: GraphKind,
+    view_key: &str,
+) -> Result<Option<SavedGraphLayout>, GraphQueryError> {
+    if project_id <= 0 {
+        return Err(GraphQueryError::Validation(
+            "project_id must be positive".to_string(),
+        ));
+    }
+    if view_key.trim().is_empty() {
+        return Err(GraphQueryError::Validation(
+            "view_key must not be empty".to_string(),
+        ));
+    }
+    let stored = connection
+        .query_row(
+            "SELECT protocol_version, positions_json, updated_at
+             FROM graph_layouts
+             WHERE project_id = ?1 AND graph_kind = ?2 AND view_key = ?3",
+            params![project_id, graph_kind.as_storage_key(), view_key],
+            |row| {
+                Ok((
+                    row.get::<_, i64>(0)? as u32,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| GraphQueryError::Store(sql_error(error)))?;
+    let Some((protocol_version, positions_json, updated_at)) = stored else {
+        return Ok(None);
+    };
+    let positions = serde_json::from_str(&positions_json).map_err(|error| {
+        GraphQueryError::Store(format!("failed to decode saved graph layout: {error}"))
+    })?;
+    let layout = SavedGraphLayout {
+        protocol_version,
+        project_id,
+        graph_kind,
+        view_key: view_key.to_string(),
+        positions,
+        updated_at,
+    };
+    layout.validate()?;
+    Ok(Some(layout))
+}
 
 pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64, String> {
     let transaction = connection.transaction().map_err(sql_error)?;

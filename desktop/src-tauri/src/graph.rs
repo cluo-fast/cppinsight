@@ -124,6 +124,78 @@ impl Display for GraphQueryError {
 
 impl Error for GraphQueryError {}
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GraphPosition {
+    pub x: f64,
+    pub y: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SavedGraphLayout {
+    pub protocol_version: u32,
+    pub project_id: i64,
+    pub graph_kind: GraphKind,
+    pub view_key: String,
+    pub positions: BTreeMap<String, GraphPosition>,
+    pub updated_at: String,
+}
+
+impl SavedGraphLayout {
+    pub fn validate(&self) -> Result<(), GraphQueryError> {
+        if self.protocol_version != GRAPH_PROTOCOL_VERSION {
+            return Err(GraphQueryError::Validation(format!(
+                "unsupported graph protocol version {}; expected {}",
+                self.protocol_version, GRAPH_PROTOCOL_VERSION
+            )));
+        }
+        if self.project_id <= 0 {
+            return Err(GraphQueryError::Validation(
+                "project_id must be positive".to_string(),
+            ));
+        }
+        if self.view_key.trim().is_empty() {
+            return Err(GraphQueryError::Validation(
+                "view_key must not be empty".to_string(),
+            ));
+        }
+        if self.view_key.len() > 128 {
+            return Err(GraphQueryError::Validation(
+                "view_key must be at most 128 bytes".to_string(),
+            ));
+        }
+        if self.positions.len() > MAX_GRAPH_NODES {
+            return Err(GraphQueryError::Validation(format!(
+                "saved layout must contain at most {MAX_GRAPH_NODES} positions"
+            )));
+        }
+        for (node_id, position) in &self.positions {
+            if !is_valid_graph_node_id(node_id) {
+                return Err(GraphQueryError::Validation(format!(
+                    "invalid graph node id: {node_id}"
+                )));
+            }
+            if !position.x.is_finite() || !position.y.is_finite() {
+                return Err(GraphQueryError::Validation(format!(
+                    "position for {node_id} must be finite"
+                )));
+            }
+        }
+        Ok(())
+    }
+}
+
+impl GraphKind {
+    pub(crate) fn as_storage_key(self) -> &'static str {
+        match self {
+            Self::ModuleDependencies => "module_dependencies",
+            Self::FunctionCalls => "function_calls",
+            Self::ClassRelations => "class_relations",
+            Self::FileIncludes => "file_includes",
+            Self::EntryPaths => "entry_paths",
+        }
+    }
+}
+
 impl GraphQueryRequest {
     pub fn validate(self) -> Result<ValidatedGraphQuery, GraphQueryError> {
         if self.protocol_version != GRAPH_PROTOCOL_VERSION {

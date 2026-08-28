@@ -1,4 +1,11 @@
 use crate::diagnostics::{build_report, write_report, DiagnosticProjectInput, DiagnosticReport};
+use crate::graph::{
+    query_graph as query_graph_at, GraphKind, GraphQueryRequest, GraphQueryResponse,
+    SavedGraphLayout,
+};
+use crate::index::{
+    load_graph_layout as load_graph_layout_at, save_graph_layout as save_graph_layout_at,
+};
 use crate::{
     app_data_dir_from_app,
     workspace::{
@@ -320,4 +327,52 @@ pub async fn inspect_symbol(
     })
     .await
     .map_err(|error| format!("inspect task join error: {error}"))?
+}
+
+#[tauri::command]
+pub async fn query_graph(
+    app: tauri::AppHandle,
+    root: String,
+    request: GraphQueryRequest,
+) -> Result<GraphQueryResponse, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        query_graph_at(&connection, request).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("graph query task join error: {error}"))?
+}
+
+#[tauri::command]
+pub async fn save_graph_layout(
+    app: tauri::AppHandle,
+    root: String,
+    layout: SavedGraphLayout,
+) -> Result<(), String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        save_graph_layout_at(&connection, layout).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("save graph layout task join error: {error}"))?
+}
+
+#[tauri::command]
+pub async fn load_graph_layout(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+    graph_kind: GraphKind,
+    view_key: String,
+) -> Result<Option<SavedGraphLayout>, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        load_graph_layout_at(&connection, project_id, graph_kind, &view_key)
+            .map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| format!("load graph layout task join error: {error}"))?
 }

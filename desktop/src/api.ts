@@ -3,6 +3,9 @@ import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AskResponse,
   DiagnosticReport,
+  GraphKind,
+  GraphQueryRequest,
+  GraphQueryResponse,
   IndexProgressEvent,
   InspectSymbolResponse,
   LoadedWorkspace,
@@ -10,6 +13,7 @@ import type {
   PersistedChat,
   ProjectOverview,
   ScanResult,
+  SavedGraphLayout,
   UpdateOpenAiSettings,
   WorkspaceSnapshot
 } from "./types";
@@ -120,4 +124,29 @@ export function saveWorkspace(snapshot: WorkspaceSnapshot): Promise<void> {
 
 export function loadProjectChats(rootKey: string): Promise<PersistedChat[]> {
   return invoke<PersistedChat[]>("load_project_chats", { rootKey });
+}
+
+export function queryGraph(
+  root: string,
+  request: GraphQueryRequest
+): Promise<GraphQueryResponse> {
+  return invoke<GraphQueryResponse>("query_graph", { root, request });
+}
+
+export function saveGraphLayout(root: string, layout: SavedGraphLayout): Promise<void> {
+  return invoke<void>("save_graph_layout", { root, layout });
+}
+
+export function loadGraphLayout(
+  root: string,
+  projectId: number,
+  graphKind: GraphKind,
+  viewKey: string
+): Promise<SavedGraphLayout | null> {
+  return invoke<SavedGraphLayout | null>("load_graph_layout", {
+    root,
+    projectId,
+    graphKind,
+    viewKey
+  });
 }

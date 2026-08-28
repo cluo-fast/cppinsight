@@ -238,3 +238,141 @@ export interface LoadedWorkspace {
   active_root_key: string | null;
   projects: LoadedProject[];
 }
+
+export type GraphKind =
+  | "module_dependencies"
+  | "function_calls"
+  | "class_relations"
+  | "file_includes"
+  | "entry_paths";
+
+export type GraphDirection = "incoming" | "outgoing" | "both";
+export type GraphConfidence =
+  | "resolved"
+  | "hybrid"
+  | "heuristic"
+  | "ambiguous"
+  | "unresolved";
+export type GraphNodeKind =
+  | "module"
+  | "file"
+  | "function"
+  | "class"
+  | "struct"
+  | "enum"
+  | "symbol"
+  | "entry"
+  | "unresolved"
+  | "group";
+
+export interface GraphFilters {
+  module_ids: string[];
+  file_paths: string[];
+  symbol_kinds: string[];
+  relation_kinds: string[];
+  confidence: GraphConfidence[];
+  search: string | null;
+}
+
+export interface GraphQueryRequest {
+  protocol_version: number;
+  project_id: number;
+  graph_kind: GraphKind;
+  root_node_ids: string[];
+  direction: GraphDirection;
+  depth: number;
+  filters: GraphFilters;
+  max_nodes: number;
+  path_target: string | null;
+  continuation: string | null;
+}
+
+export interface GraphNode {
+  id: string;
+  kind: GraphNodeKind;
+  label: string;
+  qualified_name: string;
+  file: string;
+  line: number;
+  module_id: string;
+  confidence: GraphConfidence;
+  ambiguous: boolean;
+  metadata: Record<string, string>;
+}
+
+export interface GraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  kind: string;
+  weight: number;
+  confidence: GraphConfidence;
+  ambiguous: boolean;
+  evidence_ids: string[];
+}
+
+export interface GraphGroup {
+  id: string;
+  label: string;
+  kind: string;
+  node_ids: string[];
+}
+
+export interface GraphEvidence {
+  id: string;
+  edge_id: string;
+  file: string;
+  line: number;
+  detail: string;
+  confidence: GraphConfidence;
+}
+
+export interface GraphConfidenceSummary {
+  overall: GraphConfidence;
+  resolved: number;
+  hybrid: number;
+  heuristic: number;
+  ambiguous: number;
+  unresolved: number;
+}
+
+export interface GraphStatistics {
+  original_node_count: number;
+  returned_node_count: number;
+  original_edge_count: number;
+  returned_edge_count: number;
+  cycle_count: number;
+  unresolved_edge_count: number;
+  ambiguous_edge_count: number;
+  central_node_ids: string[];
+  shortest_path_node_ids: string[];
+}
+
+export interface GraphQueryResponse {
+  protocol_version: number;
+  project_id: number;
+  graph_kind: GraphKind;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  groups: GraphGroup[];
+  evidence: GraphEvidence[];
+  confidence: GraphConfidenceSummary;
+  statistics: GraphStatistics;
+  truncated: boolean;
+  truncation_reason: string | null;
+  continuation: string | null;
+}
+
+export interface GraphPosition {
+  x: number;
+  y: number;
+}
+
+export interface SavedGraphLayout {
+  protocol_version: number;
+  project_id: number;
+  graph_kind: GraphKind;
+  view_key: string;
+  positions: Record<string, GraphPosition>;
+  updated_at: string;
+}

@@ -1,8 +1,10 @@
 use cppinsight_ai_lib::graph::{
-    query_graph, GraphDirection, GraphFilters, GraphKind, GraphQueryRequest, GraphQueryResponse,
-    GRAPH_PROTOCOL_VERSION,
+    query_graph, GraphDirection, GraphFilters, GraphKind, GraphPosition, GraphQueryRequest,
+    GraphQueryResponse, SavedGraphLayout, GRAPH_PROTOCOL_VERSION,
 };
-use cppinsight_ai_lib::index::{load_index_status, INDEX_SCHEMA_VERSION};
+use cppinsight_ai_lib::index::{
+    load_graph_layout, load_index_status, save_graph_layout, INDEX_SCHEMA_VERSION,
+};
 use cppinsight_ai_lib::{
     open_database_at, write_index, CallInfo, EntryPointInfo, IncludeInfo, LineStats, ScanResult,
     ScanStats, SymbolInfo, SymbolRelationInfo,
@@ -959,4 +961,131 @@ fn graph_query_continuations_cover_large_graph_deterministically() {
             && second_ids.contains(edge.target.as_str())));
     assert_eq!(first_ids.len() + second_ids.len(), 620);
     assert_eq!(first.edges.len() + second.edges.len(), 618);
+}
+
+fn saved_layout(
+    project_id: i64,
+    graph_kind: GraphKind,
+    view_key: &str,
+    positions: &[(&str, f64, f64)],
+) -> SavedGraphLayout {
+    SavedGraphLayout {
+        protocol_version: GRAPH_PROTOCOL_VERSION,
+        project_id,
+        graph_kind,
+        view_key: view_key.to_string(),
+        positions: positions
+            .iter()
+            .map(|(id, x, y)| ((*id).to_string(), GraphPosition { x: *x, y: *y }))
+            .collect(),
+        updated_at: String::new(),
+    }
+}
+
+#[test]
+fn graph_layout_round_trips_replaces_one_view_and_preserves_others() {
+    let temporary = tempfile::tempdir().unwrap();
+    let database = temporary.path().join("layouts.sqlite");
+    let mut connection = open_database_at(&database).unwrap();
+    let project_id = write_index(&mut connection, &graph_resolution_scan("D:/layouts")).unwrap();
+
+    let primary = saved_layout(
+        project_id,
+        GraphKind::FunctionCalls,
+        "primary",
+        &[
+            ("sym:0000000000000001", 10.0, 20.0),
+            ("sym:0000000000000003", -4.5, 8.25),
+        ],
+    );
+    let secondary = saved_layout(
+        project_id,
+        GraphKind::FunctionCalls,
+        "secondary",
+        &[("sym:0000000000000001", 99.0, 42.0)],
+    );
+    save_graph_layout(&connection, primary).unwrap();
+    save_graph_layout(&connection, secondary.clone()).unwrap();
+
+    let loaded = load_graph_layout(&connection, project_id, GraphKind::FunctionCalls, "primary")
+        .unwrap()
+        .unwrap();
+    assert_eq!(loaded.positions.len(), 2);
+    assert!(!loaded.updated_at.is_empty());
+
+    let replacement = saved_layout(
+        project_id,
+        GraphKind::FunctionCalls,
+        "primary",
+        &[("sym:0000000000000005", 1.0, 2.0)],
+    );
+    save_graph_layout(&connection, replacement).unwrap();
+    let replaced = load_graph_layout(&connection, project_id, GraphKind::FunctionCalls, "primary")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        replaced.positions.keys().collect::<Vec<_>>(),
+        [&"sym:0000000000000005".to_string()]
+    );
+    let untouched = load_graph_layout(
+        &connection,
+        project_id,
+        GraphKind::FunctionCalls,
+        "secondary",
+    )
+    .unwrap()
+    .unwrap();
+    assert_eq!(untouched.positions, secondary.positions);
+    assert!(load_graph_layout(
+        &connection,
+        project_id,
+        GraphKind::ClassRelations,
+        "primary"
+    )
+    .unwrap()
+    .is_none());
+}
+
+#[test]
+fn graph_layout_rejects_invalid_contract_values() {
+    let connection =
+        open_database_at(&tempfile::tempdir().unwrap().path().join("bad.sqlite")).unwrap();
+    let valid = saved_layout(
+        1,
+        GraphKind::FunctionCalls,
+        "primary",
+        &[("sym:0000000000000001", 1.0, 2.0)],
+    );
+
+    let mut wrong_version = valid.clone();
+    wrong_version.protocol_version = 2;
+    assert!(save_graph_layout(&connection, wrong_version).is_err());
+    let mut empty_view = valid.clone();
+    empty_view.view_key = "  ".to_string();
+    assert!(save_graph_layout(&connection, empty_view).is_err());
+    let mut non_finite = valid.clone();
+    non_finite
+        .positions
+        .get_mut("sym:0000000000000001")
+        .unwrap()
+        .x = f64::NAN;
+    assert!(save_graph_layout(&connection, non_finite).is_err());
+    let mut invalid_id = valid.clone();
+    invalid_id.positions = [("unstable".to_string(), GraphPosition { x: 1.0, y: 2.0 })]
+        .into_iter()
+        .collect();
+    assert!(save_graph_layout(&connection, invalid_id).is_err());
+    let mut too_many = valid;
+    too_many.positions = (0..501)
+        .map(|index| {
+            (
+                format!("file:src/{index}.cpp"),
+                GraphPosition {
+                    x: index as f64,
+                    y: 0.0,
+                },
+            )
+        })
+        .collect();
+    assert!(save_graph_layout(&connection, too_many).is_err());
 }

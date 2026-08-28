@@ -3303,7 +3303,10 @@ pub fn run() {
             commands::export_diagnostics,
             commands::ask_project,
             commands::export_client_summary,
-            commands::inspect_symbol
+            commands::inspect_symbol,
+            commands::query_graph,
+            commands::save_graph_layout,
+            commands::load_graph_layout
         ])
         .run(tauri::generate_context!())
         .expect("error while running CppInsight AI");
