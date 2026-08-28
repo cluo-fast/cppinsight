@@ -320,7 +320,7 @@ git commit -m "feat: define versioned graph query protocol"
 - Produces: `index::load_index_status(connection, project_id) -> Result<IndexStatus, String>`.
 - Preserves: existing `open_database_at`, `write_index`, `load_project_overview`, legacy-database migration, Ask and inspect public entry points through `lib.rs` re-exports.
 
-- [ ] **Step 1: Write failing migration and rollback tests**
+- [x] **Step 1: Write failing migration and rollback tests**
 
 Cover all of these cases:
 
@@ -335,7 +335,7 @@ assert!(load_index_status(&db, project_id)?.complete);
 
 Index a schema-2 fixture with empty stable keys and assert a deterministic `sym:` key is generated. Add an injected `WriteFault::BeforeCompleteMarker` test-only hook, attempt a second index, assert it returns an error, then assert the old generation marker and old symbol rows are unchanged.
 
-- [ ] **Step 2: Run migration tests to verify they fail**
+- [x] **Step 2: Run migration tests to verify they fail**
 
 Run:
 
@@ -345,7 +345,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol mi
 
 Expected: the graph metadata columns and tables are missing.
 
-- [ ] **Step 3: Move schema/write ownership into `index.rs`**
+- [x] **Step 3: Move schema/write ownership into `index.rs`**
 
 Create or migrate these columns with idempotent `ALTER TABLE` helpers:
 
@@ -407,7 +407,7 @@ CREATE TABLE IF NOT EXISTS graph_layouts (
 
 Add indexes on `(project_id, stable_key)`, `(project_id, qualified_name)`, relation source/target/kind, and caller/resolved target.
 
-- [ ] **Step 4: Preserve the previous complete generation on failure**
+- [x] **Step 4: Preserve the previous complete generation on failure**
 
 Within one `rusqlite::Transaction`, compute `next_generation = current + 1`, replace facts/relations, resolve them, then set:
 
@@ -422,11 +422,11 @@ WHERE id = ?1;
 
 Commit only after this update. The test-only fault returns before the marker, causing transaction rollback. Keep `index_complete = 1` for every externally visible committed generation because incomplete transaction state is never committed.
 
-- [ ] **Step 5: Update legacy copy and compatibility re-exports**
+- [x] **Step 5: Update legacy copy and compatibility re-exports**
 
 When copying old database rows, populate new columns with stable-key fallbacks and immediately run relation normalization in the destination transaction. Existing callers continue importing `crate::write_index` and `crate::open_database_at`; `lib.rs` re-exports the moved functions.
 
-- [ ] **Step 6: Run migration, rollback and full Rust tests**
+- [x] **Step 6: Run migration, rollback and full Rust tests**
 
 Run:
 
@@ -437,7 +437,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml
 
 Expected: existing tests and new migration/rollback tests all pass.
 
-- [ ] **Step 7: Commit the generation-safe graph store**
+- [x] **Step 7: Commit the generation-safe graph store**
 
 ```bash
 git add desktop/src-tauri/src/index.rs desktop/src-tauri/src/lib.rs desktop/src-tauri/tests/graph_protocol.rs

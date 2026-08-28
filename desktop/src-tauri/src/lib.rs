@@ -1,8 +1,11 @@
 mod commands;
 pub mod diagnostics;
 pub mod graph;
+pub mod index;
 pub mod secrets;
 pub mod workspace;
+
+pub use index::write_index;
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -50,6 +53,14 @@ pub struct SymbolInfo {
     pub line: u64,
     pub kind: String,
     pub name: String,
+    #[serde(default)]
+    pub qualified_name: String,
+    #[serde(default)]
+    pub stable_key: String,
+    #[serde(default)]
+    pub parent_qualified_name: String,
+    #[serde(default)]
+    pub parent_stable_key: String,
     pub signature: String,
     pub scope: String,
     pub is_definition: bool,
@@ -66,6 +77,35 @@ pub struct CallInfo {
     pub file: String,
     pub line: u64,
     pub name: String,
+    #[serde(default)]
+    pub target_qualified_name: String,
+    #[serde(default)]
+    pub caller_qualified_name: String,
+    #[serde(default)]
+    pub caller_stable_key: String,
+    #[serde(default = "default_confidence")]
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SymbolRelationInfo {
+    pub file: String,
+    pub line: u64,
+    pub source_qualified_name: String,
+    pub source_stable_key: String,
+    pub target_name: String,
+    pub kind: String,
+    #[serde(default = "default_confidence")]
+    pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntryPointInfo {
+    pub file: String,
+    pub line: u64,
+    pub qualified_name: String,
+    pub symbol_stable_key: String,
+    pub kind: String,
     #[serde(default = "default_confidence")]
     pub confidence: String,
 }
@@ -89,12 +129,18 @@ pub struct FileInfo {
     pub symbols: Vec<SymbolInfo>,
     #[serde(default)]
     pub calls: Vec<CallInfo>,
+    #[serde(default)]
+    pub relations: Vec<SymbolRelationInfo>,
+    #[serde(default)]
+    pub entry_points: Vec<EntryPointInfo>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScanResult {
     #[serde(default)]
     pub schema_version: u32,
+    #[serde(default)]
+    pub generator_version: String,
     pub root: String,
     #[serde(default)]
     pub mode: String,
@@ -125,6 +171,10 @@ pub struct ScanResult {
     pub symbols: Vec<SymbolInfo>,
     #[serde(default)]
     pub calls: Vec<CallInfo>,
+    #[serde(default)]
+    pub relations: Vec<SymbolRelationInfo>,
+    #[serde(default)]
+    pub entry_points: Vec<EntryPointInfo>,
     #[serde(default)]
     pub files: Vec<FileInfo>,
 }
@@ -412,7 +462,20 @@ fn copy_project_between_dbs(
     destination: &Connection,
     source_project_id: i64,
 ) -> Result<i64, String> {
-    let (root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence): (
+    let (
+        root,
+        indexed_at,
+        file_count,
+        symbol_count,
+        include_count,
+        diagnostics_json,
+        mode,
+        confidence,
+        index_schema_version,
+        generator_version,
+        index_generation,
+        index_complete,
+    ): (
         String,
         String,
         i64,
@@ -421,9 +484,15 @@ fn copy_project_between_dbs(
         String,
         String,
         String,
+        i64,
+        String,
+        i64,
+        i64,
     ) = source
         .query_row(
-            "SELECT root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence
+            "SELECT root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
              FROM projects WHERE id = ?1",
             params![source_project_id],
             |row| {
@@ -436,6 +505,10 @@ fn copy_project_between_dbs(
                     row.get(5)?,
                     row.get(6)?,
                     row.get(7)?,
+                    row.get(8)?,
+                    row.get(9)?,
+                    row.get(10)?,
+                    row.get(11)?,
                 ))
             },
         )
@@ -443,8 +516,11 @@ fn copy_project_between_dbs(
 
     destination
         .execute(
-            "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO projects(
+                root, indexed_at, file_count, symbol_count, include_count,
+                diagnostics_json, mode, confidence, index_schema_version,
+                generator_version, index_generation, index_complete
+             ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
              ON CONFLICT(root) DO UPDATE SET
                 indexed_at = excluded.indexed_at,
                 file_count = excluded.file_count,
@@ -452,7 +528,11 @@ fn copy_project_between_dbs(
                 include_count = excluded.include_count,
                 diagnostics_json = excluded.diagnostics_json,
                 mode = excluded.mode,
-                confidence = excluded.confidence",
+                confidence = excluded.confidence,
+                index_schema_version = excluded.index_schema_version,
+                generator_version = excluded.generator_version,
+                index_generation = excluded.index_generation,
+                index_complete = excluded.index_complete",
             params![
                 root,
                 indexed_at,
@@ -461,7 +541,11 @@ fn copy_project_between_dbs(
                 include_count,
                 diagnostics_json,
                 mode,
-                confidence
+                confidence,
+                index_schema_version,
+                generator_version,
+                index_generation,
+                index_complete,
             ],
         )
         .map_err(sql_error)?;
@@ -504,6 +588,19 @@ fn copy_project_between_dbs(
             params![dest_project_id],
         )
         .map_err(sql_error)?;
+    for table in [
+        "symbol_relations",
+        "module_relations",
+        "entry_points",
+        "graph_layouts",
+    ] {
+        destination
+            .execute(
+                &format!("DELETE FROM {table} WHERE project_id = ?1"),
+                params![dest_project_id],
+            )
+            .map_err(sql_error)?;
+    }
 
     {
         let mut statement = source
@@ -563,7 +660,9 @@ fn copy_project_between_dbs(
     {
         let mut statement = source
             .prepare(
-                "SELECT file, line, kind, name, signature, scope, is_definition, confidence
+                "SELECT file, line, kind, name, qualified_name, stable_key,
+                        parent_qualified_name, parent_stable_key, signature, scope,
+                        is_definition, confidence
                  FROM symbols WHERE project_id = ?1",
             )
             .map_err(sql_error)?;
@@ -576,24 +675,47 @@ fn copy_project_between_dbs(
                     row.get::<_, String>(3)?,
                     row.get::<_, String>(4)?,
                     row.get::<_, String>(5)?,
-                    row.get::<_, i64>(6)?,
+                    row.get::<_, String>(6)?,
                     row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
+                    row.get::<_, String>(9)?,
+                    row.get::<_, i64>(10)?,
+                    row.get::<_, String>(11)?,
                 ))
             })
             .map_err(sql_error)?;
         for row in rows {
-            let (file, line, kind, name, signature, scope, is_definition, confidence) =
-                row.map_err(sql_error)?;
+            let (
+                file,
+                line,
+                kind,
+                name,
+                qualified_name,
+                stable_key,
+                parent_qualified_name,
+                parent_stable_key,
+                signature,
+                scope,
+                is_definition,
+                confidence,
+            ) = row.map_err(sql_error)?;
             destination
                 .execute(
-                    "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
-                     VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    "INSERT INTO symbols(
+                        project_id, file, line, kind, name, qualified_name, stable_key,
+                        parent_qualified_name, parent_stable_key, signature, scope,
+                        is_definition, confidence
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     params![
                         dest_project_id,
                         file,
                         line,
                         kind,
                         name,
+                        qualified_name,
+                        stable_key,
+                        parent_qualified_name,
+                        parent_stable_key,
                         signature,
                         scope,
                         is_definition,
@@ -637,7 +759,12 @@ fn copy_project_between_dbs(
 
     if table_exists(source, "calls")? {
         let mut statement = source
-            .prepare("SELECT file, line, name, confidence FROM calls WHERE project_id = ?1")
+            .prepare(
+                "SELECT file, line, name, target_qualified_name, caller_qualified_name,
+                        caller_stable_key, resolved_target_key, candidate_target_keys_json,
+                        confidence
+                 FROM calls WHERE project_id = ?1",
+            )
             .map_err(sql_error)?;
         let rows = statement
             .query_map(params![source_project_id], |row| {
@@ -646,16 +773,232 @@ fn copy_project_between_dbs(
                     row.get::<_, i64>(1)?,
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                    row.get::<_, String>(8)?,
                 ))
             })
             .map_err(sql_error)?;
         for row in rows {
-            let (file, line, name, confidence) = row.map_err(sql_error)?;
+            let (
+                file,
+                line,
+                name,
+                target_qualified_name,
+                caller_qualified_name,
+                caller_stable_key,
+                resolved_target_key,
+                candidate_target_keys_json,
+                confidence,
+            ) = row.map_err(sql_error)?;
             destination
                 .execute(
-                    "INSERT INTO calls(project_id, file, line, name, confidence)
-                     VALUES(?1, ?2, ?3, ?4, ?5)",
-                    params![dest_project_id, file, line, name, confidence],
+                    "INSERT INTO calls(
+                        project_id, file, line, name, target_qualified_name,
+                        caller_qualified_name, caller_stable_key, resolved_target_key,
+                        candidate_target_keys_json, confidence
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        dest_project_id,
+                        file,
+                        line,
+                        name,
+                        target_qualified_name,
+                        caller_qualified_name,
+                        caller_stable_key,
+                        resolved_target_key,
+                        candidate_target_keys_json,
+                        confidence
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    if table_exists(source, "symbol_relations")? {
+        let mut statement = source
+            .prepare(
+                "SELECT source_key, target_key, target_name, relation_kind,
+                        evidence_file, evidence_line, confidence, ambiguous,
+                        candidate_target_keys_json
+                 FROM symbol_relations WHERE project_id = ?1 ORDER BY id",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, String>(8)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (
+                source_key,
+                target_key,
+                target_name,
+                relation_kind,
+                evidence_file,
+                evidence_line,
+                confidence,
+                ambiguous,
+                candidate_target_keys_json,
+            ) = row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO symbol_relations(
+                        project_id, source_key, target_key, target_name, relation_kind,
+                        evidence_file, evidence_line, confidence, ambiguous,
+                        candidate_target_keys_json
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    params![
+                        dest_project_id,
+                        source_key,
+                        target_key,
+                        target_name,
+                        relation_kind,
+                        evidence_file,
+                        evidence_line,
+                        confidence,
+                        ambiguous,
+                        candidate_target_keys_json
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    if table_exists(source, "module_relations")? {
+        let mut statement = source
+            .prepare(
+                "SELECT source_module, target_module, relation_kind, weight,
+                        confidence, evidence_count
+                 FROM module_relations WHERE project_id = ?1
+                 ORDER BY source_module, target_module, relation_kind",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, i64>(5)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (source_module, target_module, relation_kind, weight, confidence, evidence_count) =
+                row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO module_relations(
+                        project_id, source_module, target_module, relation_kind,
+                        weight, confidence, evidence_count
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        dest_project_id,
+                        source_module,
+                        target_module,
+                        relation_kind,
+                        weight,
+                        confidence,
+                        evidence_count
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    if table_exists(source, "entry_points")? {
+        let mut statement = source
+            .prepare(
+                "SELECT symbol_key, qualified_name, entry_kind, evidence_file,
+                        evidence_line, confidence
+                 FROM entry_points WHERE project_id = ?1 ORDER BY id",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (symbol_key, qualified_name, entry_kind, evidence_file, evidence_line, confidence) =
+                row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO entry_points(
+                        project_id, symbol_key, qualified_name, entry_kind,
+                        evidence_file, evidence_line, confidence
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    params![
+                        dest_project_id,
+                        symbol_key,
+                        qualified_name,
+                        entry_kind,
+                        evidence_file,
+                        evidence_line,
+                        confidence
+                    ],
+                )
+                .map_err(sql_error)?;
+        }
+    }
+
+    if table_exists(source, "graph_layouts")? {
+        let mut statement = source
+            .prepare(
+                "SELECT graph_kind, view_key, protocol_version, positions_json, updated_at
+                 FROM graph_layouts WHERE project_id = ?1 ORDER BY graph_kind, view_key",
+            )
+            .map_err(sql_error)?;
+        let rows = statement
+            .query_map(params![source_project_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(sql_error)?;
+        for row in rows {
+            let (graph_kind, view_key, protocol_version, positions_json, updated_at) =
+                row.map_err(sql_error)?;
+            destination
+                .execute(
+                    "INSERT INTO graph_layouts(
+                        project_id, graph_kind, view_key, protocol_version,
+                        positions_json, updated_at
+                     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![
+                        dest_project_id,
+                        graph_kind,
+                        view_key,
+                        protocol_version,
+                        positions_json,
+                        updated_at
+                    ],
                 )
                 .map_err(sql_error)?;
         }
@@ -687,6 +1030,7 @@ fn copy_project_between_dbs(
         }
     }
 
+    index::upgrade_legacy_project_rows(destination, dest_project_id)?;
     Ok(dest_project_id)
 }
 
@@ -1147,204 +1491,8 @@ fn migrate_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(sql_error)?;
 
-    let _ = connection.execute_batch(
-        "
-        ALTER TABLE projects ADD COLUMN mode TEXT NOT NULL DEFAULT 'heuristic';
-        ALTER TABLE projects ADD COLUMN confidence TEXT NOT NULL DEFAULT 'heuristic';
-        ALTER TABLE files ADD COLUMN mtime_unix INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE symbols ADD COLUMN confidence TEXT NOT NULL DEFAULT 'heuristic';
-        ALTER TABLE includes ADD COLUMN resolved INTEGER NOT NULL DEFAULT 0;
-        ALTER TABLE includes ADD COLUMN resolved_path TEXT NOT NULL DEFAULT '';
-        CREATE TABLE IF NOT EXISTS calls (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            project_id INTEGER NOT NULL,
-            file TEXT NOT NULL,
-            line INTEGER NOT NULL,
-            name TEXT NOT NULL,
-            confidence TEXT NOT NULL DEFAULT 'heuristic',
-            FOREIGN KEY(project_id) REFERENCES projects(id) ON DELETE CASCADE
-        );
-        CREATE INDEX IF NOT EXISTS idx_symbols_project_name ON symbols(project_id, name);
-        CREATE INDEX IF NOT EXISTS idx_calls_project_name ON calls(project_id, name);
-        ",
-    );
-
-    Ok(())
-}
-
-pub fn write_index(connection: &mut Connection, scan: &ScanResult) -> Result<i64, String> {
-    let transaction = connection.transaction().map_err(sql_error)?;
-    let indexed_at = Utc::now().to_rfc3339();
-    let diagnostics_json = serde_json::to_string(&scan.diagnostics)
-        .map_err(|error| format!("failed to encode diagnostics: {error}"))?;
-    let mode = if scan.mode.is_empty() {
-        "heuristic"
-    } else {
-        scan.mode.as_str()
-    };
-    let confidence = if scan.confidence.is_empty() {
-        "heuristic"
-    } else {
-        scan.confidence.as_str()
-    };
-
-    transaction
-        .execute(
-            "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(root) DO UPDATE SET
-                indexed_at = excluded.indexed_at,
-                file_count = excluded.file_count,
-                symbol_count = excluded.symbol_count,
-                include_count = excluded.include_count,
-                diagnostics_json = excluded.diagnostics_json,
-                mode = excluded.mode,
-                confidence = excluded.confidence",
-            params![
-                scan.root,
-                indexed_at,
-                scan.files.len() as i64,
-                scan.symbols.len() as i64,
-                scan.includes.len() as i64,
-                diagnostics_json,
-                mode,
-                confidence
-            ],
-        )
-        .map_err(sql_error)?;
-
-    let project_id: i64 = transaction
-        .query_row(
-            "SELECT id FROM projects WHERE root = ?1",
-            params![scan.root],
-            |row| row.get(0),
-        )
-        .map_err(sql_error)?;
-
-    transaction
-        .execute(
-            "DELETE FROM files WHERE project_id = ?1",
-            params![project_id],
-        )
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "DELETE FROM symbols WHERE project_id = ?1",
-            params![project_id],
-        )
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "DELETE FROM includes WHERE project_id = ?1",
-            params![project_id],
-        )
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "DELETE FROM calls WHERE project_id = ?1",
-            params![project_id],
-        )
-        .map_err(sql_error)?;
-    transaction
-        .execute(
-            "DELETE FROM chunks WHERE project_id = ?1",
-            params![project_id],
-        )
-        .map_err(sql_error)?;
-
-    for file in &scan.files {
-        transaction
-            .execute(
-                "INSERT INTO files(project_id, path, extension, category, size_bytes, total_lines, code_lines, comment_lines, blank_lines, mtime_unix)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-                params![
-                    project_id,
-                    file.path,
-                    file.extension,
-                    file.category,
-                    file.size_bytes as i64,
-                    file.lines.total as i64,
-                    file.lines.code as i64,
-                    file.lines.comment as i64,
-                    file.lines.blank as i64,
-                    file.mtime_unix as i64,
-                ],
-            )
-            .map_err(sql_error)?;
-    }
-
-    for symbol in &scan.symbols {
-        transaction
-            .execute(
-                "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-                params![
-                    project_id,
-                    symbol.file,
-                    symbol.line as i64,
-                    symbol.kind,
-                    symbol.name,
-                    symbol.signature,
-                    symbol.scope,
-                    if symbol.is_definition { 1 } else { 0 },
-                    symbol.confidence,
-                ],
-            )
-            .map_err(sql_error)?;
-    }
-
-    for include in &scan.includes {
-        transaction
-            .execute(
-                "INSERT INTO includes(project_id, file, line, target, kind, resolved, resolved_path)
-                 VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![
-                    project_id,
-                    include.file,
-                    include.line as i64,
-                    include.target,
-                    include.kind,
-                    if include.resolved { 1 } else { 0 },
-                    include.resolved_path
-                ],
-            )
-            .map_err(sql_error)?;
-    }
-
-    for call in &scan.calls {
-        transaction
-            .execute(
-                "INSERT INTO calls(project_id, file, line, name, confidence)
-                 VALUES(?1, ?2, ?3, ?4, ?5)",
-                params![
-                    project_id,
-                    call.file,
-                    call.line as i64,
-                    call.name,
-                    call.confidence,
-                ],
-            )
-            .map_err(sql_error)?;
-    }
-
-    for chunk in build_chunks(scan)? {
-        transaction
-            .execute(
-                "INSERT INTO chunks(project_id, file, start_line, end_line, text)
-                 VALUES(?1, ?2, ?3, ?4, ?5)",
-                params![
-                    project_id,
-                    chunk.file,
-                    chunk.start_line as i64,
-                    chunk.end_line as i64,
-                    chunk.text
-                ],
-            )
-            .map_err(sql_error)?;
-    }
-
-    transaction.commit().map_err(sql_error)?;
-    Ok(project_id)
+    index::migrate_legacy_base_schema(connection)?;
+    index::migrate_graph_schema(connection)
 }
 
 pub(crate) fn overview_from_scan(
@@ -1606,7 +1754,9 @@ fn load_symbols(
 ) -> Result<Vec<SymbolInfo>, String> {
     let mut statement = connection
         .prepare(
-            "SELECT file, line, kind, name, signature, scope, is_definition, COALESCE(confidence, 'heuristic')
+            "SELECT file, line, kind, name, qualified_name, stable_key,
+                    parent_qualified_name, parent_stable_key, signature, scope,
+                    is_definition, COALESCE(confidence, 'heuristic')
              FROM symbols WHERE project_id = ?1
              ORDER BY file ASC, line ASC LIMIT ?2",
         )
@@ -1619,10 +1769,14 @@ fn load_symbols(
                 line: row.get::<_, i64>(1)? as u64,
                 kind: row.get(2)?,
                 name: row.get(3)?,
-                signature: row.get(4)?,
-                scope: row.get(5)?,
-                is_definition: row.get::<_, i64>(6)? != 0,
-                confidence: row.get(7)?,
+                qualified_name: row.get(4)?,
+                stable_key: row.get(5)?,
+                parent_qualified_name: row.get(6)?,
+                parent_stable_key: row.get(7)?,
+                signature: row.get(8)?,
+                scope: row.get(9)?,
+                is_definition: row.get::<_, i64>(10)? != 0,
+                confidence: row.get(11)?,
             })
         })
         .map_err(sql_error)?;
@@ -1634,7 +1788,7 @@ fn load_symbols(
     Ok(symbols)
 }
 
-fn build_chunks(scan: &ScanResult) -> Result<Vec<SearchContext>, String> {
+pub(crate) fn build_chunks(scan: &ScanResult) -> Result<Vec<SearchContext>, String> {
     const MAX_LINES: u64 = 80;
     let root = PathBuf::from(&scan.root);
     let mut chunks = Vec::new();
@@ -3525,6 +3679,7 @@ data: [DONE]
             let mut connection = super::open_database_at(&db_path).expect("open db");
             let scan = super::ScanResult {
                 schema_version: 1,
+                generator_version: String::new(),
                 root: root_str.clone(),
                 mode: "heuristic".into(),
                 confidence: "heuristic".into(),
@@ -3542,6 +3697,8 @@ data: [DONE]
                 includes: Vec::new(),
                 symbols: Vec::new(),
                 calls: Vec::new(),
+                relations: Vec::new(),
+                entry_points: Vec::new(),
                 files: Vec::new(),
             };
             super::write_index(&mut connection, &scan).expect("write_index");
@@ -3567,6 +3724,7 @@ data: [DONE]
         let mut connection = open_memory_db();
         let scan = super::ScanResult {
             schema_version: 1,
+            generator_version: String::new(),
             root: "D:/demo".into(),
             mode: "heuristic".into(),
             confidence: "heuristic".into(),
@@ -3587,6 +3745,10 @@ data: [DONE]
                 line: 10,
                 kind: "function".into(),
                 name: "encryptFile".into(),
+                qualified_name: String::new(),
+                stable_key: String::new(),
+                parent_qualified_name: String::new(),
+                parent_stable_key: String::new(),
                 signature: "void encryptFile()".into(),
                 scope: String::new(),
                 is_definition: true,
@@ -3596,8 +3758,13 @@ data: [DONE]
                 file: "src/b.cpp".into(),
                 line: 42,
                 name: "encryptFile".into(),
+                target_qualified_name: String::new(),
+                caller_qualified_name: String::new(),
+                caller_stable_key: String::new(),
                 confidence: "heuristic".into(),
             }],
+            relations: Vec::new(),
+            entry_points: Vec::new(),
             files: Vec::new(),
         };
 
@@ -3610,6 +3777,198 @@ data: [DONE]
             )
             .expect("count calls");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn legacy_project_copy_backfills_stable_keys_and_complete_generation() {
+        let source = open_memory_db();
+        source
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence
+                 ) VALUES('D:/legacy-copy', 'then', 0, 1, 0, '[]', 'heuristic', 'heuristic')",
+                [],
+            )
+            .unwrap();
+        let source_project_id: i64 = source
+            .query_row("SELECT id FROM projects", [], |row| row.get(0))
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO symbols(
+                    project_id, file, line, kind, name, signature, scope,
+                    is_definition, confidence
+                 ) VALUES(?1, 'src/legacy.cpp', 4, 'function', 'legacyRun',
+                    'void legacyRun()', '', 1, 'heuristic')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        let destination = open_memory_db();
+        let destination_project_id =
+            super::copy_project_between_dbs(&source, &destination, source_project_id).unwrap();
+
+        let stable_key: String = destination
+            .query_row(
+                "SELECT stable_key FROM symbols WHERE project_id = ?1",
+                rusqlite::params![destination_project_id],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(stable_key.starts_with("sym:"));
+        let status = crate::index::load_index_status(&destination, destination_project_id).unwrap();
+        assert_eq!(status.schema_version, crate::index::INDEX_SCHEMA_VERSION);
+        assert_eq!(status.generator_version, "legacy-db");
+        assert_eq!(status.generation, 1);
+        assert!(status.complete);
+    }
+
+    #[test]
+    fn project_copy_preserves_schema_three_symbol_and_call_ownership() {
+        let source = open_memory_db();
+        source
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES('D:/rich-copy', 'now', 0, 1, 0, '[]', 'hybrid', 'hybrid',
+                    3, 'cppinsight-core/0.1.0', 4, 1)",
+                [],
+            )
+            .unwrap();
+        let source_project_id: i64 = source
+            .query_row("SELECT id FROM projects", [], |row| row.get(0))
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO symbols(
+                    project_id, file, line, kind, name, qualified_name, stable_key,
+                    parent_qualified_name, parent_stable_key, signature, scope,
+                    is_definition, confidence
+                 ) VALUES(?1, 'src/run.cpp', 7, 'function', 'run', 'app::Runner::run',
+                    'sym:aaaaaaaaaaaaaaaa', 'app::Runner', 'sym:bbbbbbbbbbbbbbbb',
+                    'void Runner::run()', 'app', 1, 'hybrid')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO calls(
+                    project_id, file, line, name, target_qualified_name,
+                    caller_qualified_name, caller_stable_key, resolved_target_key,
+                    candidate_target_keys_json, confidence
+                 ) VALUES(?1, 'src/run.cpp', 9, 'helper', 'app::helper',
+                    'app::Runner::run', 'sym:aaaaaaaaaaaaaaaa',
+                    'sym:cccccccccccccccc', '[\"sym:cccccccccccccccc\"]', 'hybrid')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO symbol_relations(
+                    project_id, source_key, target_key, target_name, relation_kind,
+                    evidence_file, evidence_line, confidence, ambiguous,
+                    candidate_target_keys_json
+                 ) VALUES(?1, 'sym:aaaaaaaaaaaaaaaa', 'sym:cccccccccccccccc',
+                    'app::helper', 'calls', 'src/run.cpp', 9, 'hybrid', 0,
+                    '[\"sym:cccccccccccccccc\"]')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO module_relations(
+                    project_id, source_module, target_module, relation_kind,
+                    weight, confidence, evidence_count
+                 ) VALUES(?1, 'module:src', 'module:lib', 'calls', 2, 'hybrid', 2)",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO entry_points(
+                    project_id, symbol_key, qualified_name, entry_kind,
+                    evidence_file, evidence_line, confidence
+                 ) VALUES(?1, 'sym:aaaaaaaaaaaaaaaa', 'app::Runner::run', 'test',
+                    'src/run.cpp', 7, 'hybrid')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+        source
+            .execute(
+                "INSERT INTO graph_layouts(
+                    project_id, graph_kind, view_key, protocol_version,
+                    positions_json, updated_at
+                 ) VALUES(?1, 'function_calls', 'run-view', 1,
+                    '{\"sym:aaaaaaaaaaaaaaaa\":{\"x\":1.0,\"y\":2.0}}', 'now')",
+                rusqlite::params![source_project_id],
+            )
+            .unwrap();
+
+        let destination = open_memory_db();
+        let destination_project_id =
+            super::copy_project_between_dbs(&source, &destination, source_project_id).unwrap();
+
+        let symbol: (String, String, String, String) = destination
+            .query_row(
+                "SELECT stable_key, qualified_name, parent_stable_key, parent_qualified_name
+                 FROM symbols WHERE project_id = ?1",
+                rusqlite::params![destination_project_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            symbol,
+            (
+                "sym:aaaaaaaaaaaaaaaa".into(),
+                "app::Runner::run".into(),
+                "sym:bbbbbbbbbbbbbbbb".into(),
+                "app::Runner".into()
+            )
+        );
+        let call: (String, String, String, String, String) = destination
+            .query_row(
+                "SELECT caller_stable_key, caller_qualified_name, target_qualified_name,
+                        resolved_target_key, candidate_target_keys_json
+                 FROM calls WHERE project_id = ?1",
+                rusqlite::params![destination_project_id],
+                |row| {
+                    Ok((
+                        row.get(0)?,
+                        row.get(1)?,
+                        row.get(2)?,
+                        row.get(3)?,
+                        row.get(4)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            call,
+            (
+                "sym:aaaaaaaaaaaaaaaa".into(),
+                "app::Runner::run".into(),
+                "app::helper".into(),
+                "sym:cccccccccccccccc".into(),
+                "[\"sym:cccccccccccccccc\"]".into()
+            )
+        );
+        for table in [
+            "symbol_relations",
+            "module_relations",
+            "entry_points",
+            "graph_layouts",
+        ] {
+            let count: i64 = destination
+                .query_row(
+                    &format!("SELECT COUNT(*) FROM {table} WHERE project_id = ?1"),
+                    rusqlite::params![destination_project_id],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "missing copied rows from {table}");
+        }
     }
 
     #[test]
