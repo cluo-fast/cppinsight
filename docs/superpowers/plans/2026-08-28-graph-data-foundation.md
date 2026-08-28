@@ -210,7 +210,7 @@ git commit -m "feat: emit stable graph analysis facts"
 - Produces: `GraphQueryResponse` with the required spec fields and deterministic arrays.
 - Consumes later: `index::query_graph`, Tauri/CLI/MCP transports, and frontend TypeScript types.
 
-- [ ] **Step 1: Write failing public serialization tests**
+- [x] **Step 1: Write failing public serialization tests**
 
 Create integration tests that deserialize this exact request:
 
@@ -238,7 +238,7 @@ Create integration tests that deserialize this exact request:
 
 Assert the response JSON always contains `nodes`, `edges`, `groups`, `evidence`, `confidence`, `statistics`, `truncated`, `truncation_reason`, and `continuation`.
 
-- [ ] **Step 2: Run the protocol test to verify it fails**
+- [x] **Step 2: Run the protocol test to verify it fails**
 
 Run:
 
@@ -248,7 +248,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol
 
 Expected: compilation fails because `cppinsight_ai_lib::graph` does not exist.
 
-- [ ] **Step 3: Implement the exact request types and validation**
+- [x] **Step 3: Implement the exact request types and validation**
 
 Use these shapes:
 
@@ -286,7 +286,7 @@ pub struct GraphQueryResponse {
 
 Reject protocol versions other than `1`, non-positive project IDs, depth above `8`, max nodes outside `1..=500`, malformed stable IDs, a continuation token not shaped as `v1:<unsigned-offset>`, and a `path_target` absent from all requested roots only after the store has loaded candidates.
 
-- [ ] **Step 4: Run protocol tests and format**
+- [x] **Step 4: Run protocol tests and format**
 
 Run:
 
@@ -297,7 +297,7 @@ cargo test --manifest-path desktop/src-tauri/Cargo.toml --test graph_protocol
 
 Expected: protocol serialization and validation tests pass.
 
-- [ ] **Step 5: Commit the graph contract**
+- [x] **Step 5: Commit the graph contract**
 
 ```bash
 git add desktop/src-tauri/src/graph.rs desktop/src-tauri/src/lib.rs desktop/src-tauri/tests/graph_protocol.rs

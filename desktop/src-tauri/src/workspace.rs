@@ -139,7 +139,9 @@ pub fn load_workspace_snapshot(db_path: &Path) -> Result<WorkspaceSnapshot, Stri
             .prepare("SELECT key, value FROM workspace_meta WHERE key LIKE 'active_chat:%'")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
             .map_err(|e| e.to_string())?;
         for row in rows {
             let (key, value) = row.map_err(|e| e.to_string())?;
@@ -170,9 +172,13 @@ pub fn load_workspace_snapshot(db_path: &Path) -> Result<WorkspaceSnapshot, Stri
             .map_err(|e| e.to_string())?;
 
         for row in rows {
-            let (id, root_key, title, composer_mode, sort_order) = row.map_err(|e| e.to_string())?;
+            let (id, root_key, title, composer_mode, sort_order) =
+                row.map_err(|e| e.to_string())?;
             let messages = load_messages(&connection, &id)?;
-            let active = active_by_root.get(&root_key).map(|v| v == &id).unwrap_or(false);
+            let active = active_by_root
+                .get(&root_key)
+                .map(|v| v == &id)
+                .unwrap_or(false);
             chats.push(PersistedChat {
                 id,
                 root_key,
@@ -254,8 +260,11 @@ pub fn save_workspace_snapshot(db_path: &Path, snapshot: &WorkspaceSnapshot) -> 
 
     tx.execute("DELETE FROM open_projects", [])
         .map_err(|e| e.to_string())?;
-    tx.execute("DELETE FROM workspace_meta WHERE key = 'active_root_key'", [])
-        .map_err(|e| e.to_string())?;
+    tx.execute(
+        "DELETE FROM workspace_meta WHERE key = 'active_root_key'",
+        [],
+    )
+    .map_err(|e| e.to_string())?;
 
     let now = Utc::now().to_rfc3339();
     for project in &snapshot.open_projects {
@@ -282,11 +291,7 @@ pub fn save_workspace_snapshot(db_path: &Path, snapshot: &WorkspaceSnapshot) -> 
     }
 
     // Replace chats only for root_keys present in snapshot.chats (keeps other roots untouched).
-    let mut roots: Vec<String> = snapshot
-        .chats
-        .iter()
-        .map(|c| c.root_key.clone())
-        .collect();
+    let mut roots: Vec<String> = snapshot.chats.iter().map(|c| c.root_key.clone()).collect();
     roots.sort();
     roots.dedup();
 

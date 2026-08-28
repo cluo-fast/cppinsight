@@ -1,5 +1,6 @@
 mod commands;
 pub mod diagnostics;
+pub mod graph;
 pub mod secrets;
 pub mod workspace;
 
@@ -3276,12 +3277,8 @@ mod tests {
         super::migrate_database(&settings).unwrap();
         let backend = TestSecretBackend::default();
 
-        super::migrate_legacy_api_keys_from_paths(
-            &settings,
-            &[legacy_path.clone()],
-            &backend,
-        )
-        .unwrap();
+        super::migrate_legacy_api_keys_from_paths(&settings, &[legacy_path.clone()], &backend)
+            .unwrap();
 
         assert_eq!(
             backend
