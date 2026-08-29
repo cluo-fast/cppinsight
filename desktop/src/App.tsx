@@ -753,7 +753,7 @@ export default function App() {
     }
   }
 
-  async function sendQuestion(text: string) {
+  async function sendQuestion(text: string, graphNodeId?: string) {
     if (!active || !activeChat || !text.trim() || activeChat.running || active.indexMissing) {
       return;
     }
@@ -767,7 +767,8 @@ export default function App() {
       const userMessage: ChatMessage = {
         id: createId(),
         role: "user",
-        text: trimmed
+        text: trimmed,
+        ...(graphNodeId ? { graph_node_id: graphNodeId } : {})
       };
       patchChat(sessionId, chatId, (chat) => ({
         ...chat,
@@ -785,7 +786,8 @@ export default function App() {
             role: "assistant",
             kind: "text",
             text: response.answer,
-            citations: response.citations
+            citations: response.citations,
+            ...(graphNodeId ? { graph_node_id: graphNodeId } : {})
           }
         ]
       }));
@@ -1261,7 +1263,7 @@ export default function App() {
                     projectId={overview.project_id}
                     onStatus={setStatus}
                     onInspectSymbol={(query) => void sendInspect(query)}
-                    onAskAi={(question) => void sendQuestion(question)}
+                    onAskAi={(question, nodeId) => void sendQuestion(question, nodeId)}
                     onGraphSnapshot={setGraphSnapshot}
                     requestedGraphKind={requestedGraphKind}
                     requestedGraphNodeId={requestedGraphNodeId}
@@ -1348,6 +1350,15 @@ export default function App() {
                             {message.role === "user" ? "你" : "CppInsight"}
                           </div>
                           <p>{message.text}</p>
+                          {message.role === "assistant" && message.graph_node_id ? (
+                            <button
+                              type="button"
+                              className="linkish"
+                              onClick={() => openSymbolGraph(message.graph_node_id)}
+                            >
+                              回到关系图
+                            </button>
+                          ) : null}
                           {message.kind === "symbol-inspect" && message.inspect ? (
                             <div className="inspect-card">
                               {message.inspect.report ? (

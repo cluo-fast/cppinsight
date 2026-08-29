@@ -157,6 +157,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   text: string;
   citations?: Citation[];
+  graph_node_id?: string;
   kind?: "text" | "symbol-inspect";
   inspect?: InspectSymbolResponse;
 }

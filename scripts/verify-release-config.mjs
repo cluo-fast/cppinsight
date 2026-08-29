@@ -150,7 +150,9 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "getVersion",
   "未找到 compile_commands.json",
   "requestedGraphNodeId",
-  "在函数调用图中查看"
+  "在函数调用图中查看",
+  "graph_node_id",
+  "回到关系图"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "graph workbench navigation", [
   "requestedGraphNodeId",

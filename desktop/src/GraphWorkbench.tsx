@@ -47,7 +47,7 @@ type Props = {
   projectId: number;
   onStatus?: (message: string | null) => void;
   onInspectSymbol?: (query: string) => void;
-  onAskAi?: (question: string) => void;
+  onAskAi?: (question: string, nodeId?: string) => void;
   onGraphSnapshot?: (snapshot: { svg: string; view: string }) => void;
   requestedGraphKind?: GraphKind | null;
   requestedGraphNodeId?: string | null;
@@ -674,7 +674,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                   <button className="secondary" onClick={() => onInspectSymbol?.(selected.qualified_name)}>
                     查影响面
                   </button>
-                  <button className="secondary" onClick={() => onAskAi?.(`请解释 ${selected.qualified_name} 的职责、调用关系和潜在影响面。`)}>
+                  <button className="secondary" onClick={() => onAskAi?.(`请解释 ${selected.qualified_name} 的职责、调用关系和潜在影响面。`, selected.id)}>
                     问 AI
                   </button>
                 </div>
