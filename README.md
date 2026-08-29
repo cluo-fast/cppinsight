@@ -23,6 +23,7 @@ CppInsight AI 是面向陌生、遗留或缺少文档的 C/C++ 项目的本地�
 公开测试前仍必须完成的发布门槛：
 
 - Windows runner 原生安装包、端到端安装验证、校验和与 Authenticode 签名；
+- 核心与桌面目录的正式许可证文件、第三方声明和 open-core 授权边界；
 - 目标环境中安装 Cytoscape.js 后的五类图交互与导出实测；
 - MCP SDK 依赖可获取后的 Node 传输测试；
 - 真实基准项目的延迟、内存和准确率记录。
@@ -100,6 +101,7 @@ pnpm run check
 安装包签名、校验和、CI 与回滚步骤见 [Windows 发布指南](docs/releasing-windows.md)。产品架构和首发关系图验收标准见 [公开测试版设计](docs/superpowers/specs/2026-08-27-public-beta-code-graph-design.md)。
 
 公开测试准备状态见 [公开测试准备清单](docs/public-beta-readiness.md)。
+许可证边界和发布前授权检查见 [许可证边界说明](docs/licensing.md)。
 
 ## 反馈材料
 

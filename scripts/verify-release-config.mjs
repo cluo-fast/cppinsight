@@ -163,6 +163,12 @@ requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "docs/releasing-windows.md",
   "体验内置示例"
 ]);
+requireTextMarkers(path.join(root, "docs", "licensing.md"), "license boundary document", [
+  "open-core",
+  "Apache-2.0",
+  "desktop/",
+  "第三方声明"
+]);
 requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app shell", [
   "提交反馈",
   "settings-privacy-note",
