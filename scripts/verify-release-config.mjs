@@ -121,6 +121,12 @@ requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "scripts/package-app.ps1",
   "docs/releasing-windows.md"
 ]);
+requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph benchmark script", [
+  "RedirectStandardInput",
+  "peak_working_set_mb",
+  "Get-Median",
+  "project_name"
+]);
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
