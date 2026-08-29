@@ -85,6 +85,16 @@ Invoke-Installer "msiexec.exe" @("/x", $msi.FullName, "/qn", "/norestart") "MSI 
 if (Test-Path -LiteralPath $msiExecutable) {
     throw "MSI uninstall left the application executable behind: $msiExecutable"
 }
+Invoke-Installer "msiexec.exe" @("/i", $msi.FullName, "/qn", "/norestart") "MSI reinstall"
+$msiExecutable = Find-InstalledExecutable $ProductName $ExecutableName
+if ([string]::IsNullOrWhiteSpace($msiExecutable)) {
+    throw "MSI reinstall did not register an executable for $ProductName"
+}
+Assert-AppStarts $msiExecutable "MSI reinstall"
+Invoke-Installer "msiexec.exe" @("/x", $msi.FullName, "/qn", "/norestart") "MSI final uninstall"
+if (Test-Path -LiteralPath $msiExecutable) {
+    throw "MSI final uninstall left the application executable behind: $msiExecutable"
+}
 
 $nsisInstallRoot = Join-Path $env:RUNNER_TEMP "cppinsight-nsis-smoke"
 if (Test-Path -LiteralPath $nsisInstallRoot) {
@@ -105,6 +115,18 @@ if (-not (Test-Path -LiteralPath $uninstaller)) {
 Invoke-Installer $uninstaller @("/S") "NSIS uninstall"
 if (Test-Path -LiteralPath $nsisInstallRoot) {
     throw "NSIS uninstall left the installation directory behind: $nsisInstallRoot"
+}
+New-Item -ItemType Directory -Path $nsisInstallRoot -Force | Out-Null
+Invoke-Installer $nsis.FullName @("/S", "/D=$nsisInstallRoot") "NSIS reinstall"
+$nsisExecutable = Join-Path $nsisInstallRoot $ExecutableName
+if (-not (Test-Path -LiteralPath $nsisExecutable)) {
+    throw "NSIS reinstall did not produce the application executable: $nsisExecutable"
+}
+Assert-AppStarts $nsisExecutable "NSIS reinstall"
+$uninstaller = Join-Path $nsisInstallRoot "uninstall.exe"
+Invoke-Installer $uninstaller @("/S") "NSIS final uninstall"
+if (Test-Path -LiteralPath $nsisInstallRoot) {
+    throw "NSIS final uninstall left the installation directory behind: $nsisInstallRoot"
 }
 
 Write-Host "Windows installer smoke test passed for MSI and NSIS."

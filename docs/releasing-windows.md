@@ -20,7 +20,7 @@ powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 - NSIS `-setup.exe` 安装包；
 - `SHA256SUMS.txt`。
 
-构建后工作流会运行 `scripts/windows-installer-smoke.ps1`，分别静默安装 MSI 和 NSIS，启动应用确认进程保持运行，再卸载并确认安装目录清理。该烟测必须在 Windows runner 上通过；本地 macOS/Linux 构建不能替代它。
+构建后工作流会运行 `scripts/windows-installer-smoke.ps1`，分别对 MSI 和 NSIS 执行安装、启动、卸载、再次安装、再次启动和最终卸载，确认应用进程及安装目录状态。该烟测必须在 Windows runner 上通过；本地 macOS/Linux 构建不能替代它。
 
 首个推送后的 Windows CI 才是 MSI/NSIS 构建成功的权威证据；macOS 或 Linux 本地构建不能替代这一步。
 
