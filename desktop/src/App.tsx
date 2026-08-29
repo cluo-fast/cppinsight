@@ -1281,14 +1281,14 @@ export default function App() {
                     <span className="muted">{activeChat.title}</span>
                     <button
                       className="secondary"
-                      disabled={projectIndexing}
+                      disabled={projectIndexing || active.indexMissing}
                       onClick={() => void exportSummary("markdown")}
                     >
                       导出 Markdown 摘要
                     </button>
                     <button
                       className="secondary"
-                      disabled={projectIndexing}
+                      disabled={projectIndexing || active.indexMissing}
                       onClick={() => void exportSummary("html")}
                     >
                       导出 HTML 摘要
@@ -1617,7 +1617,11 @@ export default function App() {
                       </div>
                     </>
                   ) : (
-                    <p className="muted">正在生成本地接手报告；若生成失败，可点击上方“导出 Markdown 摘要”重试。</p>
+                    <p className="muted">
+                      {active.indexMissing
+                        ? "完成索引后将生成本地接手报告。"
+                        : "正在生成本地接手报告；若生成失败，可点击上方“导出 Markdown 摘要”重试。"}
+                    </p>
                   )}
                 </section>
               </div>

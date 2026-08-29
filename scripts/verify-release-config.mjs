@@ -155,6 +155,7 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "summaryRequestSequenceRef",
   "exportClientSummary(active.overview.root",
   "正在生成本地接手报告",
+  "完成索引后将生成本地接手报告",
   "在函数调用图中查看",
   "graph_node_id",
   "回到关系图"
