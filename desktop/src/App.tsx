@@ -334,12 +334,16 @@ export default function App() {
   }, [active]);
 
   useEffect(() => {
+    const pendingSequence = active ? summaryLoadingRef.current.get(active.id) : undefined;
+    if (active && pendingSequence != null && pendingSequence !== summaryRequestSequenceRef.current) {
+      summaryLoadingRef.current.delete(active.id);
+    }
     if (
       !active ||
       active.indexMissing ||
       active.indexing ||
       active.summary ||
-      summaryLoadingRef.current.has(active.id)
+      (pendingSequence != null && pendingSequence === summaryRequestSequenceRef.current)
     ) {
       return;
     }
