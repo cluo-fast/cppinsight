@@ -5,6 +5,13 @@ import {
   queryGraph,
   saveGraphLayout
 } from "./api";
+import {
+  GRAPH_CANVAS_HEIGHT,
+  GRAPH_CANVAS_WIDTH,
+  graphSvgSnapshot as renderGraphSvgSnapshot,
+  nodeColor,
+  shortLabel
+} from "./graphSnapshot";
 import type {
   GraphConfidence,
   GraphDirection,
@@ -31,8 +38,8 @@ const DIRECTIONS: { value: GraphDirection; label: string }[] = [
   { value: "incoming", label: "向上游" }
 ];
 
-const CANVAS_WIDTH = 1000;
-const CANVAS_HEIGHT = 620;
+const CANVAS_WIDTH = GRAPH_CANVAS_WIDTH;
+const CANVAS_HEIGHT = GRAPH_CANVAS_HEIGHT;
 
 type Props = {
   root: string;
@@ -87,33 +94,6 @@ function fallbackPosition(index: number, total: number): GraphPosition {
     x: 80 + (column / Math.max(1, columns - 1)) * 840,
     y: 80 + (row / Math.max(1, rows - 1)) * 460
   };
-}
-
-function nodeColor(node: GraphNode): string {
-  switch (node.kind) {
-    case "module":
-      return "#54a7ff";
-    case "file":
-      return "#63d7b0";
-    case "class":
-    case "struct":
-      return "#d3a6ff";
-    case "function":
-      return "#ffc857";
-    case "unresolved":
-      return "#ff8e8e";
-    default:
-      return "#b8c7d9";
-  }
-}
-
-function shortLabel(node: GraphNode): string {
-  const value = node.label || node.qualified_name || node.id;
-  return value.length > 24 ? `${value.slice(0, 23)}…` : value;
-}
-
-function edgeKey(edge: GraphEdge): string {
-  return `${edge.source}->${edge.target}`;
 }
 
 function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryResponse): GraphQueryResponse {
@@ -385,22 +365,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   function graphSvgSnapshot(): string {
-    const escapeXml = (value: string) => value.replace(/[<>&'\"]/g, (character) => ({
-      "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", "\"": "&quot;"
-    }[character] ?? character));
-    const lines = edges.map((edge) => {
-      const source = positions[edge.source];
-      const target = positions[edge.target];
-      if (!source || !target) return "";
-      const highlighted = pathNodes.has(edge.source) && pathNodes.has(edge.target);
-      return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="${highlighted ? "#ffd166" : "#7890a8"}" stroke-width="${Math.min(6, 1 + edge.weight / 2)}" marker-end="url(#arrow)"/>`;
-    }).join("");
-    const circles = nodes.map((node) => {
-      const position = positions[node.id] ?? { x: 80, y: 80 };
-      const radius = centralNodes.has(node.id) ? 17 : 13;
-      return `<circle cx="${position.x}" cy="${position.y}" r="${radius}" fill="${nodeColor(node)}"/><text x="${position.x}" y="${position.y + 30}" text-anchor="middle" fill="#e8eef5" font-size="11">${escapeXml(shortLabel(node))}</text>`;
-    }).join("");
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7890a8"/></marker></defs><rect width="100%" height="100%" fill="#0d141b"/>${lines}${circles}</svg>`;
+    return renderGraphSvgSnapshot(nodes, edges, positions, pathNodes, centralNodes);
   }
 
   useEffect(() => {

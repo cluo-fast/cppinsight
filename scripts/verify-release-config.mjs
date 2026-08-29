@@ -33,6 +33,11 @@ requireValue(
     "node ../scripts/verify-release-config.mjs",
   "desktop package must provide strict verify:bundle script"
 );
+requireValue(
+  desktopPackage.scripts?.["test:graph-snapshot"] ===
+    "node --experimental-strip-types ../scripts/graph-snapshot.test.mjs",
+  "desktop package must provide graph snapshot regression test"
+);
 requireValue(config.build?.beforeDevCommand === "pnpm run dev", "beforeDevCommand must use pnpm");
 requireValue(config.build?.beforeBuildCommand === "pnpm run build", "beforeBuildCommand must use pnpm");
 requireValue(
@@ -127,6 +132,8 @@ requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph ben
   "Get-Median",
   "project_name"
 ]);
+requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot regression test");
+requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));
