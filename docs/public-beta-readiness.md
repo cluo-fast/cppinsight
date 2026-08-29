@@ -21,7 +21,7 @@
 - [x] GitHub 公开测试 Bug 表单要求版本、复现步骤和隐私确认，减少源码与凭据误上传。
 - [x] `examples/sample-cpp` 可独立 CMake 构建；本机扫描与 Workbench 五类图查询均已跑通，Windows CI 也会重复该烟测。
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
-- [x] C++ CTest、Rust 36 单测 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
+- [x] C++ CTest、Rust 38 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] 固定数据集 SVG 结构快照回归测试（稳定性、XML 转义、路径/中心节点高亮）。
 - [x] HTML 客户摘要独立转码测试覆盖标题、正文、视图标签的 HTML 转义和脚本载荷防护。
 - [x] Windows 制品 SHA-256 清单有跨平台校验器，拒绝绝对路径、路径穿越、重复条目、缺失文件和哈希不匹配。
