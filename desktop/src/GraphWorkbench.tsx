@@ -174,9 +174,15 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     const edgeElements = edges.map((edge) => ({
       data: { id: edge.id, source: edge.source, target: edge.target, label: edge.kind }
     }));
+    const layoutName = graphKind === "module_dependencies" || graphKind === "file_includes" || graphKind === "entry_paths"
+      ? "breadthfirst"
+      : "cose";
     const cy = cytoscape({
       container: cytoscapeContainerRef.current,
       elements: { nodes: nodeElements, edges: edgeElements },
+      boxSelectionEnabled: true,
+      selectionType: "additive",
+      userPanningEnabled: true,
       style: [
         {
           selector: "node",
@@ -207,7 +213,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           style: { "border-width": 3, "border-color": "#fff3bf", "line-color": "#ffd166", width: 4 }
         }
       ],
-      layout: { name: "preset", fit: true, padding: 40 }
+      layout: { name: layoutName, fit: true, padding: 40, directed: true, spacingFactor: 1.1 }
     });
     cytoscapeRef.current = cy;
     cy.on("tap", "node", (event: any) => setSelectedId(event.target.id()));
@@ -231,7 +237,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       cy.destroy();
       cytoscapeRef.current = null;
     };
-  }, [nodes, edges, pathNodes, centralNodes]);
+  }, [nodes, edges, pathNodes, centralNodes, graphKind]);
 
   useEffect(() => {
     const cy = cytoscapeRef.current;
@@ -567,6 +573,20 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
             <button className="graph-more" onClick={() => void loadGraph(response.continuation)}>
               加载下一页（{response.continuation}）
             </button>
+          ) : null}
+          {nodes.length > 0 ? (
+            <svg className="graph-minimap" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} role="img" aria-label="关系图小地图">
+              <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#0d141b" />
+              {edges.map((edge) => {
+                const source = positions[edge.source];
+                const target = positions[edge.target];
+                return source && target ? <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="#7890a8" strokeWidth="3" /> : null;
+              })}
+              {nodes.map((node) => {
+                const position = positions[node.id] ?? { x: 80, y: 80 };
+                return <circle key={node.id} cx={position.x} cy={position.y} r="8" fill={nodeColor(node)} />;
+              })}
+            </svg>
           ) : null}
         </div>
 

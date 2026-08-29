@@ -94,6 +94,29 @@ function explainImpactPrompt(inspect: InspectSymbolResponse): string {
   ].join("\n");
 }
 
+function downloadText(text: string, filename: string, type: string) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function summaryAsHtml(markdown: string, title: string): string {
+  const escape = (value: string) => value.replace(/[&<>\"]/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"
+  }[character] ?? character));
+  const body = markdown.split(/\r?\n/).map((line) => {
+    if (line.startsWith("### ")) return `<h3>${escape(line.slice(4))}</h3>`;
+    if (line.startsWith("## ")) return `<h2>${escape(line.slice(3))}</h2>`;
+    if (line.startsWith("# ")) return `<h1>${escape(line.slice(2))}</h1>`;
+    if (line.startsWith("- ")) return `<li>${escape(line.slice(2))}</li>`;
+    return line.trim() ? `<p>${escape(line)}</p>` : "";
+  }).join("\n").replace(/(<li>.*<\/li>\n?)+/g, (items) => `<ul>${items}</ul>`);
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:16px system-ui;max-width:960px;margin:40px auto;line-height:1.6;color:#1f2937}code{background:#f3f4f6;padding:2px 4px}h1,h2,h3{margin-top:1.5em}</style></head><body>${body}</body></html>`;
+}
+
 function createId(): string {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -759,6 +782,26 @@ export default function App() {
     void sendQuestion(text);
   }
 
+  async function exportSummary(format: "markdown" | "html") {
+    if (!active || active.indexMissing || anyIndexing) return;
+    setError(null);
+    setStatus("正在生成客户摘要…");
+    try {
+      const text = active.summary || await exportClientSummary(active.overview.root, active.overview.project_id);
+      patchProject(active.id, { summary: text });
+      const safeName = active.overview.root.split(/[\\/]/).filter(Boolean).pop() || "project";
+      if (format === "markdown") {
+        downloadText(text, `${safeName}-cppinsight-summary.md`, "text/markdown;charset=utf-8");
+      } else {
+        downloadText(summaryAsHtml(text, `${safeName} CppInsight summary`), `${safeName}-cppinsight-summary.html`, "text/html;charset=utf-8");
+      }
+      setStatus(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus(null);
+    }
+  }
+
   const composerMode: ComposerMode = activeChat?.composerMode ?? "ask";
   const chatBusy = Boolean(activeChat?.running);
   const projectIndexing = Boolean(active?.indexing);
@@ -1095,25 +1138,16 @@ export default function App() {
                     <button
                       className="secondary"
                       disabled={projectIndexing}
-                      onClick={() => {
-                        void (async () => {
-                          setError(null);
-                          setStatus("正在生成客户摘要…");
-                          try {
-                            const text = await exportClientSummary(
-                              overview.root,
-                              overview.project_id
-                            );
-                            patchProject(active.id, { summary: text });
-                            setStatus(null);
-                          } catch (err) {
-                            setError(err instanceof Error ? err.message : String(err));
-                            setStatus(null);
-                          }
-                        })();
-                      }}
+                      onClick={() => void exportSummary("markdown")}
                     >
-                      导出客户摘要
+                      导出 Markdown 摘要
+                    </button>
+                    <button
+                      className="secondary"
+                      disabled={projectIndexing}
+                      onClick={() => void exportSummary("html")}
+                    >
+                      导出 HTML 摘要
                     </button>
                     <button
                       className={`secondary${showGraph ? " active-action" : ""}`}
@@ -1366,7 +1400,12 @@ export default function App() {
 
                 {active.summary ? (
                   <section className="panel">
-                    <h2>客户摘要</h2>
+                    <div className="panel-heading-row">
+                      <h2>客户摘要</h2>
+                      <button className="secondary" onClick={() => setShowGraph(true)}>
+                        在关系图中查看
+                      </button>
+                    </div>
                     <pre>{active.summary}</pre>
                   </section>
                 ) : null}

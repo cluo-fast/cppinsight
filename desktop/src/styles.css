@@ -313,6 +313,20 @@ button:disabled {
   margin-bottom: 16px;
 }
 
+.panel-heading-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.graph-inspector-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
 .workspace {
   flex: 1;
   min-height: 0;
@@ -781,6 +795,22 @@ pre {
   height: 540px;
   touch-action: none;
   user-select: none;
+}
+
+.cytoscape-canvas {
+  background: transparent;
+}
+
+.graph-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 150px;
+  height: 92px;
+  border: 1px solid rgba(116, 192, 252, 0.45);
+  border-radius: 6px;
+  opacity: 0.9;
+  pointer-events: none;
 }
 
 .graph-edge {
