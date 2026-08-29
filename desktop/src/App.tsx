@@ -303,6 +303,7 @@ export default function App() {
   );
   const summaryRequestSequenceRef = useRef(0);
   const summaryLoadingRef = useRef(new Map<string, number>());
+  const indexingInFlightRef = useRef(false);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistSkipRef = useRef(true);
 
@@ -619,6 +620,10 @@ export default function App() {
   }
 
   async function runIndexAtPath(path: string, provisionalId: string) {
+    if (indexingInFlightRef.current) {
+      return;
+    }
+    indexingInFlightRef.current = true;
     const placeholderChat = createChat("对话 1");
     setSessions((current) =>
       current.some((session) => session.id === provisionalId)
@@ -654,6 +659,7 @@ export default function App() {
       if (unlisten) {
         unlisten();
       }
+      indexingInFlightRef.current = false;
     }
   }
 
