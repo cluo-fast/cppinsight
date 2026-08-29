@@ -147,7 +147,8 @@ requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
 requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app shell", [
   "提交反馈",
   "settings-privacy-note",
-  "getVersion"
+  "getVersion",
+  "未找到 compile_commands.json"
 ]);
 requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
   "应用版本",

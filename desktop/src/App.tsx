@@ -253,6 +253,16 @@ const SUGGESTED_QUESTIONS = [
   "公共头文件有哪些，谁在用？"
 ];
 
+function analysisModeLabel(mode: string): string {
+  if (mode === "hybrid") {
+    return "混合分析（已使用 compile_commands.json）";
+  }
+  if (mode === "heuristic") {
+    return "启发式分析（未找到 compile_commands.json，关系可能不完整）";
+  }
+  return `分析模式：${mode || "未知"}`;
+}
+
 export default function App() {
   const [appVersion, setAppVersion] = useState("0.1.0");
   const [sessions, setSessions] = useState<ProjectSession[]>([]);
@@ -1208,7 +1218,9 @@ export default function App() {
                     <span>{overview.file_count} 个文件</span>
                     <span>{overview.stats.lines.code} 行代码</span>
                     <span>{overview.symbol_count} 个符号</span>
-                    <span>{overview.mode || "heuristic"}</span>
+                    <span title={analysisModeLabel(overview.mode || "heuristic")}>
+                      {analysisModeLabel(overview.mode || "heuristic")}
+                    </span>
                     <span className="muted">{activeChat.title}</span>
                     <button
                       className="secondary"
