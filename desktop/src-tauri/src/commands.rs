@@ -24,8 +24,68 @@ use crate::{
 };
 use rusqlite::Connection;
 use serde::Serialize;
-use std::path::PathBuf;
-use tauri::AppHandle;
+use std::fs;
+use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Manager};
+
+const SAMPLE_PROJECT_MARKER: &str = ".cppinsight-sample-v1";
+const SAMPLE_PROJECT_FILES: &[(&str, &str)] = &[
+    (
+        "CMakeLists.txt",
+        "cmake_minimum_required(VERSION 3.16)\nproject(cppinsight_sample LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 17)\nadd_executable(cppinsight_sample src/main.cpp src/engine.cpp src/worker.cpp)\ntarget_include_directories(cppinsight_sample PRIVATE include)\n",
+    ),
+    (
+        "include/sample/engine.hpp",
+        "#pragma once\n#include <string>\n\nnamespace sample {\nclass Engine {\npublic:\n    explicit Engine(std::string name);\n    std::string run(int jobs) const;\nprivate:\n    std::string name_;\n};\n}\n",
+    ),
+    (
+        "src/engine.cpp",
+        "#include \"sample/engine.hpp\"\n#include \"sample/worker.hpp\"\n\nnamespace sample {\nEngine::Engine(std::string name) : name_(std::move(name)) {}\nstd::string Engine::run(int jobs) const {\n    Worker worker(name_);\n    return worker.process(jobs);\n}\n}\n",
+    ),
+    (
+        "include/sample/worker.hpp",
+        "#pragma once\n#include <string>\n\nnamespace sample {\nclass Worker {\npublic:\n    explicit Worker(std::string owner);\n    std::string process(int jobs) const;\nprivate:\n    std::string owner_;\n};\n}\n",
+    ),
+    (
+        "src/worker.cpp",
+        "#include \"sample/worker.hpp\"\n#include <sstream>\n\nnamespace sample {\nWorker::Worker(std::string owner) : owner_(std::move(owner)) {}\nstd::string Worker::process(int jobs) const {\n    std::ostringstream output;\n    output << owner_ << \" processed \" << jobs << \" jobs\";\n    return output.str();\n}\n}\n",
+    ),
+    (
+        "src/main.cpp",
+        "#include \"sample/engine.hpp\"\n#include <iostream>\n\nint main() {\n    sample::Engine engine(\"demo\");\n    std::cout << engine.run(3) << '\\n';\n    return 0;\n}\n",
+    ),
+];
+
+fn materialize_sample_project(root: &Path) -> Result<(), String> {
+    fs::create_dir_all(root).map_err(|error| format!("create sample project failed: {error}"))?;
+    let marker = root.join(SAMPLE_PROJECT_MARKER);
+    if marker.exists() {
+        return Ok(());
+    }
+    for (relative, content) in SAMPLE_PROJECT_FILES {
+        let path = root.join(relative);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("create sample project directory failed: {error}"))?;
+        }
+        fs::write(path, content)
+            .map_err(|error| format!("write sample project file failed: {error}"))?;
+    }
+    fs::write(marker, "CppInsight AI bundled sample project v1\n")
+        .map_err(|error| format!("write sample project marker failed: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn prepare_sample_project(app: AppHandle) -> Result<String, String> {
+    let cache_dir = app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("failed to resolve sample project cache dir: {error}"))?;
+    let root = cache_dir.join("sample-project-v1");
+    materialize_sample_project(&root)?;
+    Ok(root.to_string_lossy().into_owned())
+}
 
 fn collect_diagnostic_report(app: &tauri::AppHandle) -> Result<DiagnosticReport, String> {
     let app_data = app_data_dir_from_app(app)?;
@@ -409,4 +469,25 @@ pub async fn load_graph_layout(
     })
     .await
     .map_err(|error| format!("load graph layout task join error: {error}"))?
+}
+
+#[cfg(test)]
+mod tests {
+    use super::materialize_sample_project;
+
+    #[test]
+    fn bundled_sample_project_is_complete_and_idempotent() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        materialize_sample_project(directory.path()).expect("materialize sample");
+        assert!(directory.path().join("CMakeLists.txt").is_file());
+        assert!(directory.path().join("src/main.cpp").is_file());
+        assert!(directory.path().join("include/sample/engine.hpp").is_file());
+        let custom = directory.path().join("src/main.cpp");
+        std::fs::write(&custom, "custom\n").expect("write custom file");
+        materialize_sample_project(directory.path()).expect("reuse sample");
+        assert_eq!(
+            std::fs::read_to_string(custom).expect("read custom"),
+            "custom\n"
+        );
+    }
 }

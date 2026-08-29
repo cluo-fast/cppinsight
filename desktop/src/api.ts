@@ -43,6 +43,10 @@ export async function chooseProjectDirectory(): Promise<string | null> {
   return typeof selected === "string" ? selected : null;
 }
 
+export function prepareSampleProject(): Promise<string> {
+  return invoke<string>("prepare_sample_project");
+}
+
 export function scanProject(path: string): Promise<ScanResult> {
   return invoke<ScanResult>("scan_project", { path });
 }

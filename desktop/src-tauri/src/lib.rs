@@ -3351,6 +3351,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            commands::prepare_sample_project,
             commands::scan_project,
             commands::index_project,
             commands::index_scan_json,

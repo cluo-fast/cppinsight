@@ -13,6 +13,7 @@ import {
   loadProjectChats,
   loadWorkspace,
   previewDiagnostics,
+  prepareSampleProject,
   saveWorkspace,
   setOpenAiSettings
 } from "./api";
@@ -596,6 +597,34 @@ export default function App() {
     }
   }
 
+  async function openSampleProject() {
+    setError(null);
+    setStatus("正在准备内置示例项目…");
+    let indexingId: string | null = null;
+    try {
+      const path = await prepareSampleProject();
+      const provisionalId = normalizeRootKey(path);
+      indexingId = provisionalId;
+      const existing = await loadIndexedProject(path);
+      if (existing) {
+        await upsertSessionOverview(existing, provisionalId, { indexMissing: false });
+        setStatus(`已加载内置示例项目（${existing.file_count} 个文件）。`);
+        return;
+      }
+      await runIndexAtPath(path, provisionalId);
+    } catch (err) {
+      if (indexingId) {
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === indexingId ? { ...session, indexing: false } : session
+          )
+        );
+      }
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus(null);
+    }
+  }
+
   async function reindexActiveProject() {
     if (!active) {
       return;
@@ -1035,9 +1064,14 @@ export default function App() {
             <li>首次会扫描建索引；之后再打开走本地缓存</li>
             <li>代码有变时可点「重新索引」；提问时可开多条对话并行</li>
           </ol>
-          <button className="primary-lg" disabled={anyIndexing} onClick={() => void openProject()}>
-            打开 C/C++ 项目
-          </button>
+          <div className="welcome-actions">
+            <button className="primary-lg" disabled={anyIndexing} onClick={() => void openProject()}>
+              打开 C/C++ 项目
+            </button>
+            <button className="secondary primary-lg" disabled={anyIndexing} onClick={() => void openSampleProject()}>
+              体验内置示例
+            </button>
+          </div>
         </section>
       ) : (
         <div className="app-layout">

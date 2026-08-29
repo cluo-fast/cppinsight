@@ -121,11 +121,13 @@ requireTextMarkers(path.join(root, "README.md"), "root README", [
   "关系图",
   "MCP",
   "隐私",
-  "启动CppInsight.bat"
+  "启动CppInsight.bat",
+  "体验内置示例"
 ]);
 requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "scripts/package-app.ps1",
-  "docs/releasing-windows.md"
+  "docs/releasing-windows.md",
+  "体验内置示例"
 ]);
 requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph benchmark script", [
   "RedirectStandardInput",
