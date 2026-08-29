@@ -1385,14 +1385,25 @@ export default function App() {
                                           <li
                                             key={`caller-${item.name}-${item.via_file}:${item.via_line}`}
                                           >
-                                            <button
-                                              type="button"
-                                              className="linkish"
-                                              disabled={chatBusy}
-                                              onClick={() => void sendInspect(item.name)}
-                                            >
-                                              {item.name}
-                                            </button>
+                                            <span className="inspect-candidate-actions">
+                                              <button
+                                                type="button"
+                                                className="linkish"
+                                                disabled={chatBusy}
+                                                onClick={() => void sendInspect(item.name)}
+                                              >
+                                                {item.name}
+                                              </button>
+                                              {item.stable_id ? (
+                                                <button
+                                                  type="button"
+                                                  className="linkish"
+                                                  onClick={() => openSymbolGraph(item.stable_id)}
+                                                >
+                                                  图中查看
+                                                </button>
+                                              ) : null}
+                                            </span>
                                             <span className="muted">
                                               {" "}
                                               @ {item.file}:{item.line}
@@ -1412,14 +1423,25 @@ export default function App() {
                                           <li
                                             key={`callee-${item.name}-${item.via_file}:${item.via_line}`}
                                           >
-                                            <button
-                                              type="button"
-                                              className="linkish"
-                                              disabled={chatBusy}
-                                              onClick={() => void sendInspect(item.name)}
-                                            >
-                                              {item.name}
-                                            </button>
+                                            <span className="inspect-candidate-actions">
+                                              <button
+                                                type="button"
+                                                className="linkish"
+                                                disabled={chatBusy}
+                                                onClick={() => void sendInspect(item.name)}
+                                              >
+                                                {item.name}
+                                              </button>
+                                              {item.stable_id ? (
+                                                <button
+                                                  type="button"
+                                                  className="linkish"
+                                                  onClick={() => openSymbolGraph(item.stable_id)}
+                                                >
+                                                  图中查看
+                                                </button>
+                                              ) : null}
+                                            </span>
                                             <span className="muted">
                                               {" "}
                                               @ {item.file}:{item.line}

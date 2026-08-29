@@ -239,6 +239,8 @@ pub struct SymbolHit {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImpactNeighbor {
     pub name: String,
+    #[serde(default)]
+    pub stable_id: String,
     pub file: String,
     pub line: u64,
     pub via_file: String,
@@ -2598,8 +2600,11 @@ fn collect_impact_neighbors(
                     continue;
                 }
                 next_frontier.insert(neighbor_name.clone());
+                let stable_id =
+                    stable_id_for_neighbor(connection, project_id, &neighbor_name, &neighbor_file)?;
                 results.push(ImpactNeighbor {
                     name: neighbor_name,
+                    stable_id,
                     file: neighbor_file,
                     line: neighbor_line,
                     via_file: edge.via_file.clone(),
@@ -2617,6 +2622,25 @@ fn collect_impact_neighbors(
     }
 
     Ok(results)
+}
+
+fn stable_id_for_neighbor(
+    connection: &Connection,
+    project_id: i64,
+    name: &str,
+    file: &str,
+) -> Result<String, String> {
+    let definitions = load_definitions_for_name(connection, project_id, name)?;
+    if let Some(hit) = definitions
+        .iter()
+        .find(|hit| hit.is_definition && hit.file == file && !hit.stable_id.is_empty())
+    {
+        return Ok(hit.stable_id.clone());
+    }
+    if definitions.len() == 1 {
+        return Ok(definitions[0].stable_id.clone());
+    }
+    Ok(String::new())
 }
 
 fn find_entry_paths(
@@ -2749,9 +2773,13 @@ pub fn inspect_symbol_at(
     let mut callees =
         collect_impact_neighbors(connection, project_id, &target_name, false, depth, 40)?;
     for callee in &mut callees {
-        if let Some(hit) = best_hit_for_name(connection, project_id, &callee.name)? {
-            callee.file = hit.file;
+        let definitions = load_definitions_for_name(connection, project_id, &callee.name)?;
+        if let Some(hit) = definitions.first() {
+            callee.file = hit.file.clone();
             callee.line = hit.line;
+            if definitions.len() == 1 {
+                callee.stable_id = hit.stable_id.clone();
+            }
         }
     }
     let entry_paths = find_entry_paths(connection, project_id, &target_name, 3, 10)?;
@@ -4233,7 +4261,10 @@ data: [DONE]
         let report = response.report.expect("report");
         assert_eq!(report.symbol, "encryptFile");
         assert_eq!(report.definitions[0].stable_id, "sym:cccccccccccccccc");
-        assert!(report.callers.iter().any(|item| item.name == "runPipeline"));
+        assert!(report
+            .callers
+            .iter()
+            .any(|item| item.name == "runPipeline" && item.stable_id == "sym:bbbbbbbbbbbbbbbb"));
         assert!(report.entry_paths.iter().any(|path| path.entry == "main"));
         assert!(report
             .entry_paths

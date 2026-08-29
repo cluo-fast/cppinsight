@@ -122,6 +122,7 @@ export interface SymbolHit {
 
 export interface ImpactNeighbor {
   name: string;
+  stable_id?: string;
   file: string;
   line: number;
   via_file: string;
