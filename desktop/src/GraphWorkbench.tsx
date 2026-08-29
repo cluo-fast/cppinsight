@@ -176,6 +176,9 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       if (!cancelled) {
         const loaded = module as unknown as { default?: CytoscapeFactory } & CytoscapeFactory;
         const factory = loaded.default ?? loaded;
+        if (typeof factory !== "function") {
+          throw new Error("Cytoscape module did not expose a callable renderer");
+        }
         setCytoscapeFactory(() => factory);
       }
     }).catch(() => {
