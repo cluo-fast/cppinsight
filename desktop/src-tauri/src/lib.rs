@@ -3234,7 +3234,8 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     }
     output.push('\n');
 
-    let (build_systems, has_compile_commands) = detect_build_context(&overview.root);
+    let (build_systems, detected_compile_commands) = detect_build_context(&overview.root);
+    let has_compile_commands = detected_compile_commands || overview.mode == "hybrid";
     output.push_str("## Build context\n");
     if build_systems.is_empty() {
         output.push_str("- Build system markers: not detected at the project root.\n");
@@ -4087,6 +4088,10 @@ data: [DONE]
         assert!(summary.contains("compile_commands.json: found"));
         assert!(summary.contains("## First 1-3 days"));
         assert!(summary.contains("Review the module dependency and file-include graphs"));
+
+        std::fs::remove_file(directory.path().join("compile_commands.json")).unwrap();
+        let hybrid_summary = super::build_client_summary(&connection, project_id).unwrap();
+        assert!(hybrid_summary.contains("compile_commands.json: found"));
     }
 
     #[test]
