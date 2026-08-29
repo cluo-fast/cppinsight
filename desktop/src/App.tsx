@@ -103,7 +103,7 @@ function downloadText(text: string, filename: string, type: string) {
   URL.revokeObjectURL(url);
 }
 
-function summaryAsHtml(markdown: string, title: string): string {
+function summaryAsHtml(markdown: string, title: string, graphSvg = ""): string {
   const escape = (value: string) => value.replace(/[&<>\"]/g, (character) => ({
     "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;"
   }[character] ?? character));
@@ -114,7 +114,10 @@ function summaryAsHtml(markdown: string, title: string): string {
     if (line.startsWith("- ")) return `<li>${escape(line.slice(2))}</li>`;
     return line.trim() ? `<p>${escape(line)}</p>` : "";
   }).join("\n").replace(/(<li>.*<\/li>\n?)+/g, (items) => `<ul>${items}</ul>`);
-  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:16px system-ui;max-width:960px;margin:40px auto;line-height:1.6;color:#1f2937}code{background:#f3f4f6;padding:2px 4px}h1,h2,h3{margin-top:1.5em}</style></head><body>${body}</body></html>`;
+  const graphSection = graphSvg
+    ? `<section><h2>关系图快照</h2>${graphSvg}</section>`
+    : "";
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><title>${escape(title)}</title><style>body{font:16px system-ui;max-width:960px;margin:40px auto;line-height:1.6;color:#1f2937}code{background:#f3f4f6;padding:2px 4px}h1,h2,h3{margin-top:1.5em}section svg{max-width:100%;height:auto;border:1px solid #d1d5db}</style></head><body>${body}${graphSection}</body></html>`;
 }
 
 function createId(): string {
@@ -259,6 +262,11 @@ export default function App() {
   const [diagnosticPreview, setDiagnosticPreview] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
+  const [graphSnapshot, setGraphSnapshot] = useState("");
+
+  useEffect(() => {
+    setGraphSnapshot("");
+  }, [activeRoot]);
 
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -793,7 +801,7 @@ export default function App() {
       if (format === "markdown") {
         downloadText(text, `${safeName}-cppinsight-summary.md`, "text/markdown;charset=utf-8");
       } else {
-        downloadText(summaryAsHtml(text, `${safeName} CppInsight summary`), `${safeName}-cppinsight-summary.html`, "text/html;charset=utf-8");
+        downloadText(summaryAsHtml(text, `${safeName} CppInsight summary`, graphSnapshot), `${safeName}-cppinsight-summary.html`, "text/html;charset=utf-8");
       }
       setStatus(null);
     } catch (err) {
@@ -1166,6 +1174,7 @@ export default function App() {
                     onStatus={setStatus}
                     onInspectSymbol={(query) => void sendInspect(query)}
                     onAskAi={(question) => void sendQuestion(question)}
+                    onGraphSnapshot={setGraphSnapshot}
                   />
                 ) : null}
 

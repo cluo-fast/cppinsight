@@ -40,6 +40,7 @@ type Props = {
   onStatus?: (message: string | null) => void;
   onInspectSymbol?: (query: string) => void;
   onAskAi?: (question: string) => void;
+  onGraphSnapshot?: (svg: string) => void;
 };
 
 function createRequest(
@@ -130,7 +131,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -367,6 +368,10 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     }).join("");
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7890a8"/></marker></defs><rect width="100%" height="100%" fill="#0d141b"/>${lines}${circles}</svg>`;
   }
+
+  useEffect(() => {
+    onGraphSnapshot?.(nodes.length > 0 ? graphSvgSnapshot() : "");
+  }, [nodes, edges, positions, pathNodes, centralNodes, onGraphSnapshot]);
 
   function exportSvg() {
     const serialized = graphSvgSnapshot();
