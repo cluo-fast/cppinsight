@@ -143,6 +143,13 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "settings-privacy-note",
   "getVersion"
 ]);
+requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
+  "应用版本",
+  "复现步骤",
+  "脱敏诊断 JSON",
+  "API Key",
+  "privacy"
+]);
 requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph benchmark script", [
   "RedirectStandardInput",
   "peak_working_set_mb",

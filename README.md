@@ -102,4 +102,4 @@ pnpm run check
 
 ## 反馈材料
 
-报告问题时，请附上应用版本、复现步骤和设置页导出的脱敏诊断 JSON。不要上传客户源码、项目索引、真实路径、API Key 或含敏感内容的聊天记录。
+公开测试反馈入口：[提交 Issue](https://github.com/cluo-fast/cppinsight/issues/new/choose)。报告问题时，请附上应用版本、复现步骤和设置页导出的脱敏诊断 JSON。不要上传客户源码、项目索引、真实路径、API Key 或含敏感内容的聊天记录。

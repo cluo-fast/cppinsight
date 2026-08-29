@@ -1,0 +1,67 @@
+name: Bug report
+description: 报告可复现的扫描、关系图、报告或桌面端问题
+title: "[Bug] "
+labels:
+  - public-beta
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢反馈！请勿上传客户源码、索引数据库、API Key、真实项目路径或聊天内容。
+        如需附加环境信息，请先在设置页导出并检查脱敏诊断 JSON。
+  - type: input
+    id: version
+    attributes:
+      label: 应用版本
+      description: 设置页显示的 CppInsight AI 版本。
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: windows-version
+    attributes:
+      label: Windows 版本
+      options:
+        - Windows 11
+        - Windows 10
+        - 其他
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请列出从打开项目到出现问题的最短步骤。
+      placeholder: |
+        1. 打开内置示例
+        2. 切换到函数调用图
+        3. 点击导出 PNG
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: 脱敏诊断 JSON（可选）
+      description: 仅粘贴设置页预览确认过的诊断内容；不要粘贴源码或密钥。
+      render: json
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我确认没有在此问题中包含源码、API Key、客户路径或聊天内容。
+          required: true
+

@@ -949,7 +949,7 @@ export default function App() {
             </div>
             <a
               className="settings-link"
-              href="https://github.com/cluo-fast/cppinsight/issues/new"
+              href="https://github.com/cluo-fast/cppinsight/issues/new/choose"
               target="_blank"
               rel="noreferrer"
             >
