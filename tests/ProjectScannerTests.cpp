@@ -352,6 +352,8 @@ void testScannerEmitsStableOwnedGraphFacts() {
             "call should retain its enclosing function");
     require(hasOwnedCall(first, "app::Runner::run", "app::helper"),
             "qualified call should retain its complete target name");
+    require(hasOwnedCall(first, "main", "run"),
+            "member call inside an entry point should retain main ownership");
     require(hasEntry(first, "main", "program"), "main should be a program entry fact");
 
     const std::map<std::string, std::string> firstKeys = stableKeysByQualifiedName(first);

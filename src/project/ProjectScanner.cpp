@@ -582,6 +582,7 @@ ExtractedFunction extractFunctionSymbol(
     const std::filesystem::path& relativePath,
     std::uint64_t lineNumber,
     const std::string& scope,
+    bool allowDeclaration,
     std::vector<SymbolInfo>& symbols) {
     if (!looksLikeFunctionLine(code)) {
         return ExtractedFunction{};
@@ -612,6 +613,14 @@ ExtractedFunction extractFunctionSymbol(
     const bool hasBody = trimmedLine.find('{') != std::string::npos;
     const bool hasDeclarationTerminator = trimmedLine.find(';') != std::string::npos;
     if (!hasBody && !hasDeclarationTerminator) {
+        return ExtractedFunction{};
+    }
+    // A named function cannot be declared inside a C++ function body. Without
+    // this context guard, constructor expressions such as
+    // `Engine engine("demo");` and member calls such as `engine.run();` can be
+    // mistaken for function declarations and steal call ownership from the
+    // enclosing entry point.
+    if (!hasBody && !allowDeclaration) {
         return ExtractedFunction{};
     }
 
@@ -955,7 +964,12 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
             const ExtractedFunction function = isTypeSymbol
                 ? ExtractedFunction{}
                 : extractFunctionSymbol(
-                      code, relativePath, lineNumber, scope, analysis.symbols);
+                      code,
+                      relativePath,
+                      lineNumber,
+                      scope,
+                      functionScopes.empty(),
+                      analysis.symbols);
             if (!function.name.empty()) {
                 const SymbolInfo& symbol = analysis.symbols.back();
                 if (!typeScopes.empty()) {
