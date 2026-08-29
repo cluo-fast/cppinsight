@@ -16,7 +16,7 @@ cargo build --release --bin cppinsight-workbench
 
 ```powershell
 cd tools/mcp-server
-pnpm install --frozen-lockfile
+npm install
 ```
 
 协议转换的无 SDK 契约测试可在受限环境直接运行：
