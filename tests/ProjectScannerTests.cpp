@@ -416,6 +416,34 @@ void testScannerSurvivesPathologicalRegexLines() {
     std::filesystem::remove_all(root);
 }
 
+void testScannerFiltersConstructionNoise() {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("cppinsight_call_noise_" + std::to_string(
+            std::chrono::steady_clock::now().time_since_epoch().count()));
+    writeFile(root / "src" / "main.cpp",
+        "#include <string>\n"
+        "class Demo {\n"
+        "public:\n"
+        "    explicit Demo(std::string value);\n"
+        "    void run();\n"
+        "private:\n"
+        "    std::string value_;\n"
+        "};\n"
+        "Demo::Demo(std::string value) : value_(std::move(value)) {}\n"
+        "void Demo::run() { std::string other(\"x\"); other.size(); }\n"
+        "int main() { Demo demo(\"x\"); demo.run(); }\n");
+
+    const cppinsight::ScanResult result = cppinsight::ProjectScanner().scan(root);
+    require(!hasCall(result, "value_"), "member initializer should not be a call clue");
+    require(!hasCall(result, "demo"), "local construction should not be a call clue");
+    require(!hasCall(result, "other"), "local string construction should not be a call clue");
+    require(hasCall(result, "std::move"), "qualified standard-library call should remain a clue");
+    require(hasCall(result, "size"), "member call should remain a clue");
+    require(hasCall(result, "run"), "member function call should remain a clue");
+
+    std::filesystem::remove_all(root);
+}
+
 int main() {
     try {
         testScannerFindsProjectInventory();
@@ -424,6 +452,7 @@ int main() {
         testCompileCommandsHybridMode();
         testJsonWriterEscapesAndEmitsAnalysisContract();
         testScannerEmitsStableOwnedGraphFacts();
+        testScannerFiltersConstructionNoise();
         testScannerSurvivesPathologicalRegexLines();
     } catch (const std::exception& exception) {
         std::cerr << exception.what() << '\n';
