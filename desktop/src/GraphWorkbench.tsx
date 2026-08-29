@@ -150,6 +150,8 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const cytoscapeContainerRef = useRef<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<any>(null);
+  const positionsRef = useRef<Record<string, GraphPosition>>({});
+  positionsRef.current = positions;
   const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
 
   const nodes = response?.nodes ?? [];
@@ -168,9 +170,11 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     if (!cytoscapeContainerRef.current || nodes.length === 0) {
       return undefined;
     }
+    const savedPositions = positionsRef.current;
+    const hasCompletePositions = nodes.every((node) => Boolean(savedPositions[node.id]));
     const nodeElements = nodes.map((node) => ({
       data: { id: node.id, label: shortLabel(node), color: nodeColor(node) },
-      position: positions[node.id] ?? { x: 80, y: 80 }
+      ...(hasCompletePositions && savedPositions[node.id] ? { position: savedPositions[node.id] } : {})
     }));
     const edgeElements = edges.map((edge) => ({
       data: { id: edge.id, source: edge.source, target: edge.target, label: edge.kind }
@@ -213,8 +217,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           selector: ".path",
           style: { "border-width": 3, "border-color": "#fff3bf", "line-color": "#ffd166", width: 4 }
         }
-      ],
-      layout: { name: layoutName, fit: true, padding: 40, directed: true, spacingFactor: 1.1 }
+      ]
     });
     cytoscapeRef.current = cy;
     cy.on("tap", "node", (event: any) => setSelectedId(event.target.id()));
@@ -226,13 +229,27 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     cy.edges().forEach((edge: any) => {
       if (pathNodes.has(edge.source().id()) && pathNodes.has(edge.target().id())) edge.addClass("path");
     });
-    cy.on("dragfree", "node", () => {
+    const syncCytoscapePositions = () => {
       const next: Record<string, GraphPosition> = {};
       cy.nodes().forEach((node: any) => {
         const position = node.position();
         next[node.id()] = { x: position.x, y: position.y };
       });
-      setPositions(next);
+      setPositions((current) => {
+        const unchanged = nodes.every((node) => {
+          const before = current[node.id];
+          const after = next[node.id];
+          return before && after && Math.abs(before.x - after.x) < 0.01 && Math.abs(before.y - after.y) < 0.01;
+        });
+        return unchanged ? current : next;
+      });
+    };
+    cy.on("layoutstop", syncCytoscapePositions);
+    cy.layout(hasCompletePositions
+      ? { name: "preset", fit: true, padding: 40 }
+      : { name: layoutName, fit: true, padding: 40, directed: true, spacingFactor: 1.1 }).run();
+    cy.on("dragfree", "node", () => {
+      syncCytoscapePositions();
     });
     return () => {
       cy.destroy();
@@ -251,6 +268,11 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [positions, zoom]);
 
   function layoutFor(nodesToLayout: GraphNode[], saved?: Record<string, GraphPosition>) {
+    const hasCompleteSavedLayout = nodesToLayout.length > 0 && nodesToLayout.every((node) => Boolean(saved?.[node.id]));
+    if (cytoscapeReady && !hasCompleteSavedLayout) {
+      setPositions({});
+      return;
+    }
     const next: Record<string, GraphPosition> = {};
     nodesToLayout.forEach((node, index) => {
       next[node.id] = saved?.[node.id] ?? fallbackPosition(index, nodesToLayout.length);
