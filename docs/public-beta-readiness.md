@@ -13,6 +13,7 @@
 - [x] 接手报告加入模块、调用、包含、类型和入口图洞察，并带关系证据位置；支持 Markdown/HTML 摘要下载，AI 关闭时本地报告和图查询仍可用。
 - [x] 报告面板可按五类图直接打开对应关系图视图。
 - [x] 欢迎页提供内置示例项目入口，首次体验不需要命令行或准备外部仓库。
+- [x] 设置页显示运行版本、隐私边界和 GitHub 反馈入口，并支持脱敏诊断预览/导出。
 - [x] `examples/sample-cpp` 可独立 CMake 构建；本机扫描与 Workbench 函数调用图查询均已跑通，Windows CI 也会重复该烟测。
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
 - [x] C++ CTest、Rust 36 单测 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。

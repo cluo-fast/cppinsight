@@ -448,6 +448,38 @@ button:disabled {
   font-size: 16px;
 }
 
+.settings-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-heading h2 {
+  margin-bottom: 4px;
+}
+
+.settings-version {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.settings-link {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--text);
+  padding: 9px 14px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.settings-link:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
 .panel ul,
 .messages ul {
   margin: 0;

@@ -138,6 +138,11 @@ requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "docs/releasing-windows.md",
   "体验内置示例"
 ]);
+requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app shell", [
+  "提交反馈",
+  "settings-privacy-note",
+  "getVersion"
+]);
 requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph benchmark script", [
   "RedirectStandardInput",
   "peak_working_set_mb",

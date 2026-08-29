@@ -1,4 +1,5 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   askProject,
@@ -253,6 +254,7 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export default function App() {
+  const [appVersion, setAppVersion] = useState("0.1.0");
   const [sessions, setSessions] = useState<ProjectSession[]>([]);
   const [activeRoot, setActiveRoot] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -266,6 +268,14 @@ export default function App() {
   const [showGraph, setShowGraph] = useState(false);
   const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
   const [graphSnapshot, setGraphSnapshot] = useState<{ svg: string; view: string } | null>(null);
+
+  useEffect(() => {
+    void getVersion()
+      .then((version) => setAppVersion(version))
+      .catch(() => {
+        // Browser development mode has no Tauri app metadata; keep the package fallback.
+      });
+  }, []);
 
   useEffect(() => {
     setGraphSnapshot(null);
@@ -932,10 +942,26 @@ export default function App() {
 
       {showSettings ? (
         <section className="settings-card">
-          <h2>AI 设置</h2>
+          <div className="settings-heading">
+            <div>
+              <h2>AI 设置</h2>
+              <span className="settings-version">CppInsight AI {appVersion}</span>
+            </div>
+            <a
+              className="settings-link"
+              href="https://github.com/cluo-fast/cppinsight/issues/new"
+              target="_blank"
+              rel="noreferrer"
+            >
+              提交反馈
+            </a>
+          </div>
           <p>
             类似 Codex / Claude Code：配置 Base URL、API Key、Model，可接官方接口或兼容网关。环境变量
             OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL 优先于此处保存的值。
+          </p>
+          <p className="settings-privacy-note">
+            扫描、索引和关系图默认只在本机运行；只有主动提问时才会发送所选上下文。诊断导出会先脱敏预览，不包含源码、绝对路径或密钥。
           </p>
           <label className="settings-field">
             <span>Base URL</span>
