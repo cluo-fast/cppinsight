@@ -158,6 +158,7 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
 requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "graph workbench navigation", [
   "requestedGraphNodeId",
   "graphRequestId",
+  "changeGraphKind",
   "setRootIds([requestedGraphNodeId])",
   "setRootIds([])"
 ]);

@@ -320,6 +320,12 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     setPositions(next);
   }
 
+  function changeGraphKind(nextKind: GraphKind) {
+    setGraphKind(nextKind);
+    setRootIds([]);
+    setPathTarget(null);
+  }
+
   async function loadGraph(nextContinuation: string | null = null) {
     setLoading(true);
     setError(null);
@@ -501,7 +507,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       <div className="graph-controls">
         <label>
           <span>图类型</span>
-          <select value={graphKind} onChange={(event) => setGraphKind(event.target.value as GraphKind)}>
+          <select value={graphKind} onChange={(event) => changeGraphKind(event.target.value as GraphKind)}>
             {GRAPH_KINDS.map((kind) => (
               <option key={kind.value} value={kind.value}>
                 {kind.label}
