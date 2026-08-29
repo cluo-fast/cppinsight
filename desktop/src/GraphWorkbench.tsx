@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import cytoscape from "cytoscape";
 import {
   loadGraphLayout,
   queryGraph,
@@ -54,6 +53,8 @@ type Props = {
   graphRequestId?: number;
   graphDataVersion?: number;
 };
+
+type CytoscapeFactory = typeof import("cytoscape");
 
 function createRequest(
   projectId: number,
@@ -139,7 +140,8 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const cytoscapeRef = useRef<any>(null);
   const positionsRef = useRef<Record<string, GraphPosition>>({});
   positionsRef.current = positions;
-  const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
+  const [cytoscapeFactory, setCytoscapeFactory] = useState<CytoscapeFactory | null>(null);
+  const cytoscapeReady = cytoscapeFactory !== null;
   const consumedGraphKindRef = useRef<GraphKind | null>(null);
   const consumedGraphNodeRef = useRef<string | null>(null);
   const consumedGraphKindRequestRef = useRef<number | null>(null);
@@ -163,6 +165,26 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     () => new Set(response?.statistics.central_node_ids ?? []),
     [response]
   );
+
+  useEffect(() => {
+    if (nodes.length === 0 || cytoscapeFactory) {
+      return undefined;
+    }
+    let cancelled = false;
+    void import("cytoscape").then((module) => {
+      if (!cancelled) {
+        const loaded = module as unknown as { default?: CytoscapeFactory } & CytoscapeFactory;
+        const factory = loaded.default ?? loaded;
+        setCytoscapeFactory(() => factory);
+      }
+    }).catch(() => {
+      // The deterministic SVG canvas remains usable when the optional renderer
+      // cannot be loaded in a source-only development environment.
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [nodes.length, cytoscapeFactory]);
 
   useEffect(() => {
     if (selectedId && hiddenNodeIds.has(selectedId)) setSelectedId(null);
@@ -213,7 +235,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [requestedGraphNodeId, graphRequestId]);
 
   useEffect(() => {
-    if (!cytoscapeContainerRef.current || nodes.length === 0) {
+    if (!cytoscapeContainerRef.current || nodes.length === 0 || !cytoscapeFactory) {
       return undefined;
     }
     const savedPositions = positionsRef.current;
@@ -228,7 +250,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     const layoutName = graphKind === "module_dependencies" || graphKind === "file_includes" || graphKind === "entry_paths"
       ? "breadthfirst"
       : "cose";
-    const cy = cytoscape({
+    const cy = cytoscapeFactory({
       container: cytoscapeContainerRef.current,
       elements: { nodes: nodeElements, edges: edgeElements },
       boxSelectionEnabled: true,
@@ -301,7 +323,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       cy.destroy();
       cytoscapeRef.current = null;
     };
-  }, [nodes, visibleNodes, visibleEdges, pathNodes, centralNodes, graphKind]);
+  }, [nodes, visibleNodes, visibleEdges, pathNodes, centralNodes, graphKind, cytoscapeFactory]);
 
   useEffect(() => {
     const cy = cytoscapeRef.current;
