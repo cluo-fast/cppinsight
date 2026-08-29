@@ -3124,13 +3124,41 @@ pub fn try_load_indexed_project_at(
     Ok(None)
 }
 
-fn graph_edge_evidence(response: &GraphQueryResponse, edge: &GraphEdge) -> String {
+fn report_path(root: &str, value: &str) -> String {
+    let path = value.replace('\\', "/");
+    if path.is_empty() || path == "<project-layout>" {
+        return path;
+    }
+    let normalized_root = root.replace('\\', "/").trim_end_matches('/').to_string();
+    let path_lower = path.to_lowercase();
+    let root_lower = normalized_root.to_lowercase();
+    if path_lower == root_lower {
+        return ".".to_string();
+    }
+    if path_lower.starts_with(&(root_lower.clone() + "/")) {
+        return path[normalized_root.len() + 1..].to_string();
+    }
+
+    let is_absolute = path.starts_with('/')
+        || (path.len() >= 3 && path.as_bytes()[1] == b':' && path.as_bytes()[2] == b'/');
+    if is_absolute {
+        let parts = path
+            .split('/')
+            .filter(|part| !part.is_empty())
+            .collect::<Vec<_>>();
+        let start = parts.len().saturating_sub(3);
+        return format!("…/{}", parts[start..].join("/"));
+    }
+    path
+}
+
+fn graph_edge_evidence(response: &GraphQueryResponse, edge: &GraphEdge, root: &str) -> String {
     response
         .evidence
         .iter()
         .filter(|item| edge.evidence_ids.iter().any(|id| id == &item.id))
         .take(3)
-        .map(|item| format!("{}:{}", item.file, item.line))
+        .map(|item| format!("{}:{}", report_path(root, &item.file), item.line))
         .collect::<Vec<_>>()
         .join(", ")
 }
@@ -3229,7 +3257,9 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     for hotspot in overview.hotspots.iter().take(6) {
         output.push_str(&format!(
             "- `{}` ({} code lines, {} symbols)\n",
-            hotspot.path, hotspot.code_lines, hotspot.symbol_count
+            report_path(&overview.root, &hotspot.path),
+            hotspot.code_lines,
+            hotspot.symbol_count
         ));
     }
     output.push('\n');
@@ -3289,14 +3319,19 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     for symbol in entry_symbols.into_iter().take(4) {
         output.push_str(&format!(
             "- Entry symbol `{}` at `{}:{}` (confidence `{}`)\n",
-            symbol.name, symbol.file, symbol.line, symbol.confidence
+            symbol.name,
+            report_path(&overview.root, &symbol.file),
+            symbol.line,
+            symbol.confidence
         ));
         suggestion_count += 1;
     }
     for hotspot in overview.hotspots.iter().take(4) {
         output.push_str(&format!(
             "- Hot file `{}` next ({} code lines, {} symbols)\n",
-            hotspot.path, hotspot.code_lines, hotspot.symbol_count
+            report_path(&overview.root, &hotspot.path),
+            hotspot.code_lines,
+            hotspot.symbol_count
         ));
         suggestion_count += 1;
     }
@@ -3345,7 +3380,7 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             modules.statistics.cycle_count
         ));
         for edge in modules.edges.iter().take(8) {
-            let evidence = graph_edge_evidence(&modules, edge);
+            let evidence = graph_edge_evidence(&modules, edge, &overview.root);
             output.push_str(&format!(
                 "- `{}` → `{}` ({}, weight {}, confidence {}; evidence {})\n",
                 edge.source,
@@ -3369,7 +3404,7 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             calls.statistics.unresolved_edge_count
         ));
         for edge in calls.edges.iter().take(8) {
-            let evidence = graph_edge_evidence(&calls, edge);
+            let evidence = graph_edge_evidence(&calls, edge, &overview.root);
             output.push_str(&format!(
                 "- Call `{}` → `{}` (confidence {}; evidence {})\n",
                 graph_node_display(&calls, &edge.source),
@@ -4076,6 +4111,16 @@ data: [DONE]
             )
             .unwrap();
         let project_id = connection.last_insert_rowid();
+        let absolute_source = directory.path().join("src").join("main.cpp");
+        connection
+            .execute(
+                "INSERT INTO files(
+                    project_id, path, extension, category, size_bytes,
+                    total_lines, code_lines, comment_lines, blank_lines, mtime_unix
+                 ) VALUES(?1, ?2, '.cpp', 'source', 10, 4, 3, 0, 1, 0)",
+                rusqlite::params![project_id, absolute_source.to_string_lossy().to_string()],
+            )
+            .unwrap();
 
         let summary = super::build_client_summary(&connection, project_id).unwrap();
         assert!(summary.contains(&format!(
@@ -4083,6 +4128,7 @@ data: [DONE]
             directory.path().file_name().unwrap().to_string_lossy()
         )));
         assert!(!summary.contains(&directory.path().to_string_lossy().to_string()));
+        assert!(summary.contains("src/main.cpp"));
         assert!(summary.contains("## Build context"));
         assert!(summary.contains("Detected build systems: CMake"));
         assert!(summary.contains("compile_commands.json: found"));
