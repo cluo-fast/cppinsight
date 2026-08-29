@@ -1597,22 +1597,26 @@ export default function App() {
                   </div>
                 </section>
 
-                {active.summary ? (
-                  <section className="panel">
-                    <div className="panel-heading-row">
-                      <h2>客户摘要</h2>
-                    </div>
-                    <pre>{active.summary}</pre>
-                    <div className="summary-graph-links">
-                      <span className="muted">按报告洞察打开关系图：</span>
-                      <button className="secondary" onClick={() => openReportGraph("module_dependencies")}>模块依赖</button>
-                      <button className="secondary" onClick={() => openReportGraph("function_calls")}>函数调用</button>
-                      <button className="secondary" onClick={() => openReportGraph("class_relations")}>类关系</button>
-                      <button className="secondary" onClick={() => openReportGraph("file_includes")}>文件包含</button>
-                      <button className="secondary" onClick={() => openReportGraph("entry_paths")}>入口路径</button>
-                    </div>
-                  </section>
-                ) : null}
+                <section className="panel">
+                  <div className="panel-heading-row">
+                    <h2>客户摘要</h2>
+                  </div>
+                  {active.summary ? (
+                    <>
+                      <pre>{active.summary}</pre>
+                      <div className="summary-graph-links">
+                        <span className="muted">按报告洞察打开关系图：</span>
+                        <button className="secondary" onClick={() => openReportGraph("module_dependencies")}>模块依赖</button>
+                        <button className="secondary" onClick={() => openReportGraph("function_calls")}>函数调用</button>
+                        <button className="secondary" onClick={() => openReportGraph("class_relations")}>类关系</button>
+                        <button className="secondary" onClick={() => openReportGraph("file_includes")}>文件包含</button>
+                        <button className="secondary" onClick={() => openReportGraph("entry_paths")}>入口路径</button>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="muted">正在生成本地接手报告；若生成失败，可点击上方“导出 Markdown 摘要”重试。</p>
+                  )}
+                </section>
               </div>
 
               <footer className="composer">
