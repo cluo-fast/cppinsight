@@ -3135,6 +3135,21 @@ fn graph_edge_evidence(response: &GraphQueryResponse, edge: &GraphEdge) -> Strin
         .join(", ")
 }
 
+fn graph_node_display(response: &GraphQueryResponse, id: &str) -> String {
+    response
+        .nodes
+        .iter()
+        .find(|node| node.id == id)
+        .map(|node| {
+            if node.qualified_name.is_empty() {
+                node.label.clone()
+            } else {
+                node.qualified_name.clone()
+            }
+        })
+        .unwrap_or_else(|| id.to_string())
+}
+
 fn detect_build_context(root: &str) -> (Vec<&'static str>, bool) {
     let root = Path::new(root);
     let has_file = |name: &str| root.join(name).is_file();
@@ -3344,8 +3359,8 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             let evidence = graph_edge_evidence(&calls, edge);
             output.push_str(&format!(
                 "- Call `{}` → `{}` (confidence {}; evidence {})\n",
-                edge.source,
-                edge.target,
+                graph_node_display(&calls, &edge.source),
+                graph_node_display(&calls, &edge.target),
                 edge.confidence,
                 if evidence.is_empty() {
                     "未定位"
@@ -3381,6 +3396,9 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             } else {
                 entries.statistics.central_node_ids
                     [..entries.statistics.central_node_ids.len().min(5)]
+                    .iter()
+                    .map(|id| graph_node_display(&entries, id))
+                    .collect::<Vec<_>>()
                     .join(", ")
             }
         ));
