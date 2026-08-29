@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { handleToolCall, listToolDefinitions } from "../index.mjs";
+import { handleToolCall, listToolDefinitions } from "../core.mjs";
 
 test("cppinsight_graph advertises bounded protocol fields", () => {
   const graph = listToolDefinitions().find((tool) => tool.name === "cppinsight_graph");

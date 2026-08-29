@@ -741,6 +741,8 @@ Add `cppinsight_graph` with enums for graph kind/direction and a maximum `maxNod
 
 - [ ] **Step 5: Run Rust and MCP verification**
 
+Rust verification and the dependency-free MCP core tests pass. The package-manager command remains environment-limited because the MCP SDK is not present in the local cache and registry access is denied.
+
 Run:
 
 ```bash
@@ -750,7 +752,7 @@ pnpm --dir tools/mcp-server test
 
 Expected: graph CLI/MCP tests and all existing tests pass.
 
-- [ ] **Step 6: Commit transport reuse**
+- [x] **Step 6: Commit transport reuse**
 
 ```bash
 git add desktop/src-tauri/src/bin/workbench.rs tools/mcp-server/index.mjs tools/mcp-server/package.json tools/mcp-server/test/index.test.mjs
@@ -810,7 +812,7 @@ Expected: every command exits zero; Rust tests include migration, resolution, fi
 
 Confirm the phase covers stable IDs, qualified names/parents, call ownership/candidates, class relations, entry points, evidence/confidence, migrations, complete generations, module relations, saved layouts, all five query kinds, direction/depth/filtering, path/cycles/key nodes, aggregation, truncation/continuation, and desktop/CLI/MCP reuse. Leave Cytoscape rendering, report integration and benchmark corpus unchecked because they are explicit later phases.
 
-- [ ] **Step 5: Commit documentation and verification record**
+- [x] **Step 5: Commit documentation and verification record**
 
 ```bash
 git add docs/graph-protocol-v1.md desktop/README.md tools/mcp-server/README.md docs/superpowers/plans/2026-08-28-graph-data-foundation.md

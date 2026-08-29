@@ -19,6 +19,12 @@ cd tools/mcp-server
 pnpm install --frozen-lockfile
 ```
 
+协议转换的无 SDK 契约测试可在受限环境直接运行：
+
+```powershell
+node --test test/*.test.mjs
+```
+
 ## Cursor MCP config
 
 Add to your MCP settings (path adjust as needed):
