@@ -277,6 +277,7 @@ export default function App() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
+  const [requestedGraphNodeId, setRequestedGraphNodeId] = useState<string | null>(null);
   const [graphSnapshot, setGraphSnapshot] = useState<{ svg: string; view: string } | null>(null);
 
   useEffect(() => {
@@ -308,6 +309,14 @@ export default function App() {
 
   function openReportGraph(kind: GraphKind) {
     setRequestedGraphKind(kind);
+    setRequestedGraphNodeId(null);
+    setShowGraph(true);
+  }
+
+  function openSymbolGraph(stableId: string | undefined) {
+    if (!stableId) return;
+    setRequestedGraphKind("function_calls");
+    setRequestedGraphNodeId(stableId);
     setShowGraph(true);
   }
 
@@ -1255,6 +1264,7 @@ export default function App() {
                     onAskAi={(question) => void sendQuestion(question)}
                     onGraphSnapshot={setGraphSnapshot}
                     requestedGraphKind={requestedGraphKind}
+                    requestedGraphNodeId={requestedGraphNodeId}
                   />
                 ) : null}
 
@@ -1342,6 +1352,17 @@ export default function App() {
                             <div className="inspect-card">
                               {message.inspect.report ? (
                                 <>
+                                  {message.inspect.report.definitions[0]?.stable_id ? (
+                                    <div className="inspect-graph-action">
+                                      <button
+                                        type="button"
+                                        className="secondary"
+                                        onClick={() => openSymbolGraph(message.inspect?.report?.definitions[0]?.stable_id)}
+                                      >
+                                        在函数调用图中查看
+                                      </button>
+                                    </div>
+                                  ) : null}
                                   <div className="inspect-section">
                                     <h3>定义</h3>
                                     <ul>
@@ -1450,14 +1471,25 @@ export default function App() {
                                   <ul>
                                     {message.inspect.candidates.slice(0, 12).map((item) => (
                                       <li key={`cand-${item.file}:${item.line}:${item.name}`}>
-                                        <button
-                                          type="button"
-                                          className="linkish"
-                                          disabled={chatBusy}
-                                          onClick={() => void sendInspect(item.name)}
-                                        >
-                                          {item.name}
-                                        </button>
+                                        <span className="inspect-candidate-actions">
+                                          <button
+                                            type="button"
+                                            className="linkish"
+                                            disabled={chatBusy}
+                                            onClick={() => void sendInspect(item.name)}
+                                          >
+                                            {item.name}
+                                          </button>
+                                          {item.stable_id ? (
+                                            <button
+                                              type="button"
+                                              className="linkish"
+                                              onClick={() => openSymbolGraph(item.stable_id)}
+                                            >
+                                              图中查看
+                                            </button>
+                                          ) : null}
+                                        </span>
                                         <span className="muted">
                                           {" "}
                                           · {item.file}:{item.line}

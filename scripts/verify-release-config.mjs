@@ -148,11 +148,19 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "提交反馈",
   "settings-privacy-note",
   "getVersion",
-  "未找到 compile_commands.json"
+  "未找到 compile_commands.json",
+  "requestedGraphNodeId",
+  "在函数调用图中查看"
+]);
+requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "graph workbench navigation", [
+  "requestedGraphNodeId",
+  "setRootIds([requestedGraphNodeId])",
+  "setRootIds([])"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "client summary generator", [
   "## Suggested reading order",
-  "Graph findings are heuristic"
+  "Graph findings are heuristic",
+  "stable_id: row.get(0)?"
 ]);
 requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
   "应用版本",

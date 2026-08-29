@@ -226,6 +226,8 @@ pub struct AskResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SymbolHit {
     pub name: String,
+    #[serde(default)]
+    pub stable_id: String,
     pub file: String,
     pub line: u64,
     pub kind: String,
@@ -2317,24 +2319,17 @@ struct CallEdge {
     via_line: u64,
 }
 
-fn symbol_hit_from_row(
-    file: String,
-    line: u64,
-    kind: String,
-    name: String,
-    signature: String,
-    is_definition: bool,
-    confidence: String,
-) -> SymbolHit {
-    SymbolHit {
-        name,
-        file,
-        line,
-        kind,
-        signature,
-        is_definition,
-        confidence,
-    }
+fn symbol_hit_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SymbolHit> {
+    Ok(SymbolHit {
+        stable_id: row.get(0)?,
+        file: row.get(1)?,
+        line: row.get::<_, i64>(2)? as u64,
+        kind: row.get(3)?,
+        name: row.get(4)?,
+        signature: row.get(5)?,
+        is_definition: row.get::<_, i64>(6)? != 0,
+        confidence: row.get(7)?,
+    })
 }
 
 fn search_symbol_hits(
@@ -2350,7 +2345,7 @@ fn search_symbol_hits(
 
     let mut statement = connection
         .prepare(
-            "SELECT file, line, kind, name, signature, is_definition, confidence
+            "SELECT stable_key, file, line, kind, name, signature, is_definition, confidence
              FROM symbols
              WHERE project_id = ?1
                AND (
@@ -2373,17 +2368,10 @@ fn search_symbol_hits(
         .map_err(sql_error)?;
 
     let rows = statement
-        .query_map(params![project_id, trimmed, limit as i64], |row| {
-            Ok(symbol_hit_from_row(
-                row.get(0)?,
-                row.get::<_, i64>(1)? as u64,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get::<_, i64>(5)? != 0,
-                row.get(6)?,
-            ))
-        })
+        .query_map(
+            params![project_id, trimmed, limit as i64],
+            symbol_hit_from_row,
+        )
         .map_err(sql_error)?;
 
     let mut hits = Vec::new();
@@ -2400,7 +2388,7 @@ fn load_definitions_for_name(
 ) -> Result<Vec<SymbolHit>, String> {
     let mut statement = connection
         .prepare(
-            "SELECT file, line, kind, name, signature, is_definition, confidence
+            "SELECT stable_key, file, line, kind, name, signature, is_definition, confidence
              FROM symbols
              WHERE project_id = ?1 AND lower(name) = lower(?2)
              ORDER BY is_definition DESC, file ASC, line ASC
@@ -2408,17 +2396,7 @@ fn load_definitions_for_name(
         )
         .map_err(sql_error)?;
     let rows = statement
-        .query_map(params![project_id, name], |row| {
-            Ok(symbol_hit_from_row(
-                row.get(0)?,
-                row.get::<_, i64>(1)? as u64,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get::<_, i64>(5)? != 0,
-                row.get(6)?,
-            ))
-        })
+        .query_map(params![project_id, name], symbol_hit_from_row)
         .map_err(sql_error)?;
     let mut hits = Vec::new();
     for row in rows {
@@ -2444,24 +2422,14 @@ fn load_definition_lines_for_file(
 ) -> Result<Vec<(u64, SymbolHit)>, String> {
     let mut statement = connection
         .prepare(
-            "SELECT file, line, kind, name, signature, is_definition, confidence
+            "SELECT stable_key, file, line, kind, name, signature, is_definition, confidence
              FROM symbols
              WHERE project_id = ?1 AND file = ?2 AND is_definition = 1
              ORDER BY line ASC",
         )
         .map_err(sql_error)?;
     let rows = statement
-        .query_map(params![project_id, file], |row| {
-            Ok(symbol_hit_from_row(
-                row.get(0)?,
-                row.get::<_, i64>(1)? as u64,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get::<_, i64>(5)? != 0,
-                row.get(6)?,
-            ))
-        })
+        .query_map(params![project_id, file], symbol_hit_from_row)
         .map_err(sql_error)?;
     let mut items = Vec::new();
     for row in rows {
@@ -2681,6 +2649,7 @@ fn find_entry_paths(
                 } else {
                     hops.push(SymbolHit {
                         name: name.clone(),
+                        stable_id: String::new(),
                         file: String::new(),
                         line: 0,
                         kind: "function".to_string(),
@@ -4231,16 +4200,16 @@ data: [DONE]
             .query_row("SELECT id FROM projects", [], |row| row.get(0))
             .unwrap();
 
-        for (file, line, name) in [
-            ("src/main.cpp", 1_i64, "main"),
-            ("src/main.cpp", 20, "runPipeline"),
-            ("src/crypto.cpp", 10, "encryptFile"),
+        for (file, line, name, stable_id) in [
+            ("src/main.cpp", 1_i64, "main", "sym:aaaaaaaaaaaaaaaa"),
+            ("src/main.cpp", 20, "runPipeline", "sym:bbbbbbbbbbbbbbbb"),
+            ("src/crypto.cpp", 10, "encryptFile", "sym:cccccccccccccccc"),
         ] {
             connection
                 .execute(
-                    "INSERT INTO symbols(project_id, file, line, kind, name, signature, scope, is_definition, confidence)
-                     VALUES(?1, ?2, ?3, 'function', ?4, '', '', 1, 'heuristic')",
-                    rusqlite::params![project_id, file, line, name],
+                    "INSERT INTO symbols(project_id, stable_key, file, line, kind, name, signature, scope, is_definition, confidence)
+                     VALUES(?1, ?2, ?3, ?4, 'function', ?5, '', '', 1, 'heuristic')",
+                    rusqlite::params![project_id, stable_id, file, line, name],
                 )
                 .unwrap();
         }
@@ -4263,6 +4232,7 @@ data: [DONE]
             super::inspect_symbol_at(&connection, project_id, "encryptFile", Some(2)).unwrap();
         let report = response.report.expect("report");
         assert_eq!(report.symbol, "encryptFile");
+        assert_eq!(report.definitions[0].stable_id, "sym:cccccccccccccccc");
         assert!(report.callers.iter().any(|item| item.name == "runPipeline"));
         assert!(report.entry_paths.iter().any(|path| path.entry == "main"));
         assert!(report

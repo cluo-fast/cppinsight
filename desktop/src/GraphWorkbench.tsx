@@ -50,6 +50,7 @@ type Props = {
   onAskAi?: (question: string) => void;
   onGraphSnapshot?: (snapshot: { svg: string; view: string }) => void;
   requestedGraphKind?: GraphKind | null;
+  requestedGraphNodeId?: string | null;
 };
 
 function createRequest(
@@ -113,7 +114,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind, requestedGraphNodeId }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -138,6 +139,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   positionsRef.current = positions;
   const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
   const consumedGraphKindRef = useRef<GraphKind | null>(null);
+  const consumedGraphNodeRef = useRef<string | null>(null);
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
@@ -167,6 +169,21 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       setGraphKind(requestedGraphKind);
     }
   }, [requestedGraphKind]);
+
+  useEffect(() => {
+    if (!requestedGraphNodeId) {
+      consumedGraphNodeRef.current = null;
+      if (rootIds.length > 0) setRootIds([]);
+      setPathTarget(null);
+      return;
+    }
+    if (requestedGraphNodeId !== consumedGraphNodeRef.current) {
+      consumedGraphNodeRef.current = requestedGraphNodeId;
+      setGraphKind("function_calls");
+      setRootIds([requestedGraphNodeId]);
+      setPathTarget(null);
+    }
+  }, [requestedGraphNodeId]);
 
   useEffect(() => {
     if (!cytoscapeContainerRef.current || nodes.length === 0) {
@@ -338,10 +355,20 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   useEffect(() => {
+    if (
+      (requestedGraphKind &&
+        consumedGraphKindRef.current !== requestedGraphKind &&
+        graphKind !== requestedGraphKind) ||
+      (requestedGraphNodeId &&
+        consumedGraphNodeRef.current !== requestedGraphNodeId &&
+        !rootIds.includes(requestedGraphNodeId))
+    ) {
+      return;
+    }
     void loadGraph();
     // The explicit controls below are the intended query boundaries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root, projectId, graphKind]);
+  }, [root, projectId, graphKind, rootIds, requestedGraphKind, requestedGraphNodeId]);
 
   function svgPoint(event: React.PointerEvent<SVGSVGElement>): GraphPosition {
     const svg = canvasRef.current;

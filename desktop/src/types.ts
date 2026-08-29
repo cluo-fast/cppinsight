@@ -111,6 +111,7 @@ export interface AskResponse {
 
 export interface SymbolHit {
   name: string;
+  stable_id?: string;
   file: string;
   line: number;
   kind: string;
