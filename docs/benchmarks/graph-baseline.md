@@ -26,6 +26,8 @@ node scripts/verify-benchmark-result.mjs .\benchmark-graph.json
 
 校验器要求结果完整覆盖五类图、median 与样本一致、返回规模不超过原始规模，并拒绝项目路径或其他绝对路径泄露。Windows CI 会对内置示例执行一次三轮基准烟测；它只验证基准流水线本身，不替代真实 10 项目准确率和容量基准。
 
+候选项目清单位于 [`corpus.json`](./corpus.json)，目前固定 10 个不同规模和构建体系的 C/C++ 项目。每次正式基准前必须把 `revision` 固定为 commit SHA，复核许可证，并补充人工核验的 `accuracy_cases`；校验器只负责保证清单结构完整，不把候选清单误报为已完成的准确率基准。
+
 ## 当前可验证证据
 
 - Rust 集成测试覆盖 620 节点链的 500 节点分页、确定性 continuation、方向/深度、筛选、最短路径、歧义证据和循环分量。

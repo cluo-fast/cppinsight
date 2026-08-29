@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "check": "pnpm run verify:release && pnpm run build && pnpm run test:graph-snapshot && pnpm run test:benchmark-result && cargo test --manifest-path src-tauri/Cargo.toml",
+    "check": "pnpm run verify:release && pnpm run build && pnpm run test:graph-snapshot && pnpm run test:benchmark-result && pnpm run test:benchmark-corpus && cargo test --manifest-path src-tauri/Cargo.toml",
     "test:graph-snapshot": "node --experimental-strip-types ../scripts/graph-snapshot.test.mjs",
     "test:benchmark-result": "node --test ../scripts/verify-benchmark-result.test.mjs",
+    "test:benchmark-corpus": "node --test ../scripts/verify-benchmark-corpus.test.mjs",
     "verify:release": "node ../scripts/verify-release-config.mjs --allow-generated-scanner",
     "verify:bundle": "node ../scripts/verify-release-config.mjs",
     "preview": "vite preview",

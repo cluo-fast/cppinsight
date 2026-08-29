@@ -20,6 +20,7 @@
 - [x] C++ CTest、Rust 36 单测 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] 固定数据集 SVG 结构快照回归测试（稳定性、XML 转义、路径/中心节点高亮）。
 - [x] 图基准结果校验器覆盖五类图、median/规模一致性和路径隐私；Windows CI 会对内置示例执行三轮基准烟测。
+- [x] 质量基准候选清单固定 10 个项目并有结构校验；revision、许可证复核、人工准确率样本和真实结果仍待目标环境完成。
 - [x] MCP SDK 安装后运行 `npm test` 通过（3/3），无 SDK 的核心契约测试也可独立运行。
 - [x] Windows CI 已接入 MSI/NSIS 安装、启动、卸载烟测脚本；待首个 Windows runner 运行产生证据。
 

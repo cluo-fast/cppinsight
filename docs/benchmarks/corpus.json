@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "purpose": "cppinsight-public-beta-quality-corpus",
+  "minimum_projects": 10,
+  "projects": [
+    {
+      "id": "fmt",
+      "repository": "https://github.com/fmtlib/fmt.git",
+      "license_spdx": "MIT",
+      "build_system": "CMake",
+      "size_class": "small",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "catch2",
+      "repository": "https://github.com/catchorg/Catch2.git",
+      "license_spdx": "BSL-1.0",
+      "build_system": "CMake",
+      "size_class": "medium",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "opencv",
+      "repository": "https://github.com/opencv/opencv.git",
+      "license_spdx": "Apache-2.0",
+      "build_system": "CMake",
+      "size_class": "large",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "godot",
+      "repository": "https://github.com/godotengine/godot.git",
+      "license_spdx": "MIT",
+      "build_system": "SCons",
+      "size_class": "large",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "protobuf",
+      "repository": "https://github.com/protocolbuffers/protobuf.git",
+      "license_spdx": "BSD-3-Clause",
+      "build_system": "CMake",
+      "size_class": "large",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "grpc",
+      "repository": "https://github.com/grpc/grpc.git",
+      "license_spdx": "Apache-2.0",
+      "build_system": "CMake",
+      "size_class": "large",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "poco",
+      "repository": "https://github.com/pocoproject/poco.git",
+      "license_spdx": "BSL-1.0",
+      "build_system": "CMake",
+      "size_class": "medium",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "nlohmann-json",
+      "repository": "https://github.com/nlohmann/json.git",
+      "license_spdx": "MIT",
+      "build_system": "CMake",
+      "size_class": "small",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "cxxopts",
+      "repository": "https://github.com/jarro2783/cxxopts.git",
+      "license_spdx": "MIT",
+      "build_system": "CMake",
+      "size_class": "small",
+      "revision": null,
+      "accuracy_cases": []
+    },
+    {
+      "id": "doctest",
+      "repository": "https://github.com/doctest/doctest.git",
+      "license_spdx": "MIT",
+      "build_system": "CMake",
+      "size_class": "small",
+      "revision": null,
+      "accuracy_cases": []
+    }
+  ]
+}

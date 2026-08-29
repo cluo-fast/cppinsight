@@ -43,6 +43,11 @@ requireValue(
     "node --test ../scripts/verify-benchmark-result.test.mjs",
   "desktop package must provide benchmark result validation test"
 );
+requireValue(
+  desktopPackage.scripts?.["test:benchmark-corpus"] ===
+    "node --test ../scripts/verify-benchmark-corpus.test.mjs",
+  "desktop package must provide benchmark corpus validation test"
+);
 requireValue(config.build?.beforeDevCommand === "pnpm run dev", "beforeDevCommand must use pnpm");
 requireValue(config.build?.beforeBuildCommand === "pnpm run build", "beforeBuildCommand must use pnpm");
 requireValue(
@@ -85,6 +90,7 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run build",
     "pnpm run test:graph-snapshot",
     "pnpm run test:benchmark-result",
+    "pnpm run test:benchmark-corpus",
     "pnpm tauri build",
     "Verify bundled sample scan and graph query",
     "examples/sample-cpp",
@@ -160,6 +166,9 @@ requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapsh
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.mjs"), "benchmark result verifier");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.test.mjs"), "benchmark result verifier test");
+requireFile(path.join(root, "docs", "benchmarks", "corpus.json"), "benchmark corpus manifest");
+requireFile(path.join(root, "scripts", "verify-benchmark-corpus.mjs"), "benchmark corpus verifier");
+requireFile(path.join(root, "scripts", "verify-benchmark-corpus.test.mjs"), "benchmark corpus verifier test");
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));

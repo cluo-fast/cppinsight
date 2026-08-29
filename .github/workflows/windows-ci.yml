@@ -65,6 +65,7 @@ jobs:
           pnpm run build
           pnpm run test:graph-snapshot
           pnpm run test:benchmark-result
+          pnpm run test:benchmark-corpus
 
       - name: Test Rust backend
         working-directory: desktop/src-tauri
