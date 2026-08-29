@@ -26,6 +26,27 @@ export function shortLabel(node: GraphNode): string {
   return value.length > 24 ? `${value.slice(0, 23)}…` : value;
 }
 
+export function hiddenDescendants(edges: GraphEdge[], collapsedIds: ReadonlySet<string>): Set<string> {
+  const outgoing = new Map<string, string[]>();
+  edges.forEach((edge) => {
+    const targets = outgoing.get(edge.source) ?? [];
+    targets.push(edge.target);
+    outgoing.set(edge.source, targets);
+  });
+  const hidden = new Set<string>();
+  const queue = [...collapsedIds];
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    for (const target of outgoing.get(current) ?? []) {
+      if (collapsedIds.has(target) || hidden.has(target)) continue;
+      hidden.add(target);
+      queue.push(target);
+    }
+  }
+  return hidden;
+}
+
 function escapeXml(value: string): string {
   return value.replace(/[<>&'\"]/g, (character) => ({
     "<": "&lt;",

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { graphSvgSnapshot } from "../desktop/src/graphSnapshot.ts";
+import { graphSvgSnapshot, hiddenDescendants } from "../desktop/src/graphSnapshot.ts";
 
 const nodes = [
   {
@@ -64,4 +64,17 @@ test("graph SVG snapshot highlights path and central nodes", () => {
   );
   assert.match(svg, /stroke="#ffd166"/);
   assert.match(svg, /r="17"/);
+});
+
+test("collapsed nodes hide only downstream descendants", () => {
+  const hidden = hiddenDescendants(edges.concat({
+    id: "edge:bbbbbbbbbbbbbbbb",
+    source: nodes[1].id,
+    target: "sym:cccccccccccccccc",
+    kind: "uses",
+    weight: 1,
+    confidence: "heuristic",
+    evidence_ids: []
+  }), new Set([nodes[0].id]));
+  assert.deepEqual([...hidden].sort(), [nodes[1].id, "sym:cccccccccccccccc"].sort());
 });

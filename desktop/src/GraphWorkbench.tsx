@@ -9,6 +9,7 @@ import {
   GRAPH_CANVAS_HEIGHT,
   GRAPH_CANVAS_WIDTH,
   graphSvgSnapshot as renderGraphSvgSnapshot,
+  hiddenDescendants,
   nodeColor,
   shortLabel
 } from "./graphSnapshot";
@@ -124,6 +125,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [response, setResponse] = useState<GraphQueryResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Record<string, GraphPosition>>({});
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
   const [activeView, setActiveView] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -137,7 +139,13 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
-  const selected = nodes.find((node) => node.id === selectedId) ?? null;
+  const hiddenNodeIds = useMemo(() => hiddenDescendants(edges, collapsedIds), [edges, collapsedIds]);
+  const visibleNodes = useMemo(() => nodes.filter((node) => !hiddenNodeIds.has(node.id)), [nodes, hiddenNodeIds]);
+  const visibleEdges = useMemo(
+    () => edges.filter((edge) => !hiddenNodeIds.has(edge.source) && !hiddenNodeIds.has(edge.target)),
+    [edges, hiddenNodeIds]
+  );
+  const selected = visibleNodes.find((node) => node.id === selectedId) ?? null;
   const pathNodes = useMemo(
     () => new Set(response?.statistics.shortest_path_node_ids ?? []),
     [response]
@@ -148,16 +156,20 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   );
 
   useEffect(() => {
+    if (selectedId && hiddenNodeIds.has(selectedId)) setSelectedId(null);
+  }, [hiddenNodeIds, selectedId]);
+
+  useEffect(() => {
     if (!cytoscapeContainerRef.current || nodes.length === 0) {
       return undefined;
     }
     const savedPositions = positionsRef.current;
-    const hasCompletePositions = nodes.every((node) => Boolean(savedPositions[node.id]));
-    const nodeElements = nodes.map((node) => ({
+    const hasCompletePositions = visibleNodes.every((node) => Boolean(savedPositions[node.id]));
+    const nodeElements = visibleNodes.map((node) => ({
       data: { id: node.id, label: shortLabel(node), color: nodeColor(node) },
       ...(hasCompletePositions && savedPositions[node.id] ? { position: savedPositions[node.id] } : {})
     }));
-    const edgeElements = edges.map((edge) => ({
+    const edgeElements = visibleEdges.map((edge) => ({
       data: { id: edge.id, source: edge.source, target: edge.target, label: edge.kind }
     }));
     const layoutName = graphKind === "module_dependencies" || graphKind === "file_includes" || graphKind === "entry_paths"
@@ -217,7 +229,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
         next[node.id()] = { x: position.x, y: position.y };
       });
       setPositions((current) => {
-        const unchanged = nodes.every((node) => {
+      const unchanged = visibleNodes.every((node) => {
           const before = current[node.id];
           const after = next[node.id];
           return before && after && Math.abs(before.x - after.x) < 0.01 && Math.abs(before.y - after.y) < 0.01;
@@ -236,7 +248,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       cy.destroy();
       cytoscapeRef.current = null;
     };
-  }, [nodes, edges, pathNodes, centralNodes, graphKind]);
+  }, [nodes, visibleNodes, visibleEdges, pathNodes, centralNodes, graphKind]);
 
   useEffect(() => {
     const cy = cytoscapeRef.current;
@@ -294,6 +306,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
         `目标=${pathTarget ?? "无"}`
       ].join(" · ");
       setResponse(merged);
+      if (!nextContinuation) setCollapsedIds(new Set());
       setActiveView(viewLabel);
       setSelectedId((current) =>
         current && merged.nodes.some((node) => node.id === current) ? current : merged.nodes[0]?.id ?? null
@@ -365,15 +378,15 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   function graphSvgSnapshot(): string {
-    return renderGraphSvgSnapshot(nodes, edges, positions, pathNodes, centralNodes);
+    return renderGraphSvgSnapshot(visibleNodes, visibleEdges, positions, pathNodes, centralNodes);
   }
 
   useEffect(() => {
     onGraphSnapshot?.({
-      svg: nodes.length > 0 ? graphSvgSnapshot() : "",
+      svg: visibleNodes.length > 0 ? graphSvgSnapshot() : "",
       view: activeView
     });
-  }, [nodes, edges, positions, pathNodes, centralNodes, activeView, onGraphSnapshot]);
+  }, [visibleNodes, visibleEdges, positions, pathNodes, centralNodes, activeView, onGraphSnapshot]);
 
   function exportSvg() {
     const serialized = graphSvgSnapshot();
@@ -398,7 +411,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   const selectedEdges = selected
-    ? edges.filter((edge) => edge.source === selected.id || edge.target === selected.id)
+    ? visibleEdges.filter((edge) => edge.source === selected.id || edge.target === selected.id)
     : [];
 
   return (
@@ -412,13 +425,13 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           <button className="secondary" disabled={loading} onClick={() => void loadGraph()}>
             {loading ? "查询中…" : "刷新"}
           </button>
-          <button className="secondary" disabled={nodes.length === 0} onClick={saveCurrentLayout}>
+          <button className="secondary" disabled={visibleNodes.length === 0} onClick={saveCurrentLayout}>
             保存布局
           </button>
-          <button className="secondary" disabled={nodes.length === 0} onClick={exportSvg}>
+          <button className="secondary" disabled={visibleNodes.length === 0} onClick={exportSvg}>
             导出 SVG
           </button>
-          <button className="secondary" disabled={nodes.length === 0} onClick={exportPng}>
+          <button className="secondary" disabled={visibleNodes.length === 0} onClick={exportPng}>
             导出 PNG
           </button>
         </div>
@@ -498,13 +511,14 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           <span>置信度：{response.confidence.overall}</span>
           <span>循环：{response.statistics.cycle_count}</span>
           <span>关键节点：{response.statistics.central_node_ids.length}</span>
+          {hiddenNodeIds.size > 0 ? <span>已收起：{hiddenNodeIds.size}</span> : null}
           {response.truncated ? <span className="graph-truncated">已截断</span> : null}
         </div>
       ) : null}
 
       <div className="graph-layout">
         <div className="graph-canvas-wrap">
-          {nodes.length === 0 ? (
+          {visibleNodes.length === 0 ? (
             <div className="graph-empty muted">暂无关系数据。请先完成索引，或调整图类型与筛选条件。</div>
           ) : cytoscapeReady ? (
             <div
@@ -534,7 +548,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                 </marker>
               </defs>
               <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="transparent" />
-              {edges.map((edge) => {
+              {visibleEdges.map((edge) => {
                 const source = positions[edge.source];
                 const target = positions[edge.target];
                 if (!source || !target) return null;
@@ -552,7 +566,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                   />
                 );
               })}
-              {nodes.map((node) => {
+              {visibleNodes.map((node) => {
                 const position = positions[node.id] ?? { x: 80, y: 80 };
                 const highlighted = pathNodes.has(node.id);
                 const central = centralNodes.has(node.id);
@@ -581,15 +595,15 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
               加载下一页（{response.continuation}）
             </button>
           ) : null}
-          {nodes.length > 0 ? (
+          {visibleNodes.length > 0 ? (
             <svg className="graph-minimap" viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`} role="img" aria-label="关系图小地图">
               <rect width={CANVAS_WIDTH} height={CANVAS_HEIGHT} fill="#0d141b" />
-              {edges.map((edge) => {
+              {visibleEdges.map((edge) => {
                 const source = positions[edge.source];
                 const target = positions[edge.target];
                 return source && target ? <line key={edge.id} x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="#7890a8" strokeWidth="3" /> : null;
               })}
-              {nodes.map((node) => {
+              {visibleNodes.map((node) => {
                 const position = positions[node.id] ?? { x: 80, y: 80 };
                 return <circle key={node.id} cx={position.x} cy={position.y} r="8" fill={nodeColor(node)} />;
               })}
@@ -616,6 +630,17 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                 </div>
               ) : null}
               <div className="graph-node-actions">
+                <button
+                  className="secondary"
+                  onClick={() => setCollapsedIds((current) => {
+                    const next = new Set(current);
+                    if (next.has(selected.id)) next.delete(selected.id);
+                    else next.add(selected.id);
+                    return next;
+                  })}
+                >
+                  {collapsedIds.has(selected.id) ? "展开下游" : "收起下游"}
+                </button>
                 <button
                   className="secondary"
                   onClick={() => setRootIds([selected.id])}
