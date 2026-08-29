@@ -62,6 +62,7 @@ for (const relative of config.bundle?.resources ?? []) {
 }
 
 requireFile(path.join(root, "scripts", "package-app.ps1"), "package script");
+requireFile(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script");
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
 
 const windowsWorkflowPath = path.join(root, ".github", "workflows", "windows-ci.yml");
@@ -74,6 +75,8 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run build",
     "pnpm tauri build",
     "Upload Windows installers",
+    "Smoke test MSI and NSIS installers",
+    "windows-installer-smoke.ps1",
     "Get-FileHash",
     "Get-AuthenticodeSignature"
   ]) {

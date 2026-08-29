@@ -14,6 +14,7 @@
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
 - [x] C++ CTest、Rust 35 单测 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] MCP SDK 安装后运行 `npm test` 通过（3/3），无 SDK 的核心契约测试也可独立运行。
+- [x] Windows CI 已接入 MSI/NSIS 安装、启动、卸载烟测脚本；待首个 Windows runner 运行产生证据。
 
 ## 目标环境发布门槛
 

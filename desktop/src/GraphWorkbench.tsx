@@ -40,7 +40,7 @@ type Props = {
   onStatus?: (message: string | null) => void;
   onInspectSymbol?: (query: string) => void;
   onAskAi?: (question: string) => void;
-  onGraphSnapshot?: (svg: string) => void;
+  onGraphSnapshot?: (snapshot: { svg: string; view: string }) => void;
 };
 
 function createRequest(
@@ -144,6 +144,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [response, setResponse] = useState<GraphQueryResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Record<string, GraphPosition>>({});
+  const [activeView, setActiveView] = useState("");
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -301,11 +302,22 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
         )
       );
       const merged = nextContinuation && response ? mergeGraphResponses(response, next) : next;
+      const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
+      const viewLabel = [
+        GRAPH_KINDS.find((item) => item.value === graphKind)?.label ?? graphKind,
+        `方向=${DIRECTIONS.find((item) => item.value === direction)?.label ?? direction}`,
+        `深度=${depth}`,
+        `搜索=${search.trim() || "全部"}`,
+        `置信度=${confidence === "all" ? "全部" : confidence}`,
+        `关系=${relationFilter.trim() || "全部"}`,
+        `根=${rootIds.length > 0 ? rootIds.join(",") : "自动"}`,
+        `目标=${pathTarget ?? "无"}`
+      ].join(" · ");
       setResponse(merged);
+      setActiveView(viewLabel);
       setSelectedId((current) =>
         current && merged.nodes.some((node) => node.id === current) ? current : merged.nodes[0]?.id ?? null
       );
-      const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
       let saved: SavedGraphLayout | null = null;
       try {
         saved = await loadGraphLayout(root, projectId, graphKind, viewKey);
@@ -392,8 +404,11 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   useEffect(() => {
-    onGraphSnapshot?.(nodes.length > 0 ? graphSvgSnapshot() : "");
-  }, [nodes, edges, positions, pathNodes, centralNodes, onGraphSnapshot]);
+    onGraphSnapshot?.({
+      svg: nodes.length > 0 ? graphSvgSnapshot() : "",
+      view: activeView
+    });
+  }, [nodes, edges, positions, pathNodes, centralNodes, activeView, onGraphSnapshot]);
 
   function exportSvg() {
     const serialized = graphSvgSnapshot();
