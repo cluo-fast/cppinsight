@@ -714,12 +714,22 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                 >
                   设为查询根
                 </button>
+                {rootIds.length > 0 ? (
+                  <button className="secondary" onClick={() => setRootIds([])}>
+                    清除查询根
+                  </button>
+                ) : null}
                 <button
                   className="secondary"
                   onClick={() => setPathTarget(selected.id)}
                 >
                   设为路径目标
                 </button>
+                {pathTarget ? (
+                  <button className="secondary" onClick={() => setPathTarget(null)}>
+                    清除路径目标
+                  </button>
+                ) : null}
               </div>
               {rootIds.length > 0 || pathTarget ? (
                 <p className="muted graph-query-hint">
