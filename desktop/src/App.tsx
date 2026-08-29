@@ -619,14 +619,26 @@ export default function App() {
   }
 
   async function runIndexAtPath(path: string, provisionalId: string) {
+    const placeholderChat = createChat("对话 1");
     setSessions((current) =>
-      current.map((session) =>
-        session.id === provisionalId ? { ...session, indexing: true } : session
-      )
+      current.some((session) => session.id === provisionalId)
+        ? current.map((session) =>
+            session.id === provisionalId ? { ...session, indexing: true } : session
+          )
+        : [
+            ...current,
+            {
+              id: provisionalId,
+              overview: placeholderOverview(path),
+              summary: "",
+              indexing: true,
+              indexMissing: true,
+              chats: [placeholderChat],
+              activeChatId: placeholderChat.id
+            }
+          ]
     );
-    if (sessions.some((session) => session.id === provisionalId)) {
-      setActiveRoot(provisionalId);
-    }
+    setActiveRoot(provisionalId);
     setStatus("正在扫描代码并建立索引…");
 
     let unlisten: UnlistenFn | undefined;
