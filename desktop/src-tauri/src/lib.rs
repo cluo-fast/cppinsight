@@ -3290,13 +3290,15 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             build_systems.join(", ")
         ));
     }
+    let compile_commands_status = if !has_compile_commands {
+        "not found; current relationships may be heuristic and incomplete"
+    } else if overview.mode == "hybrid" {
+        "found; hybrid analysis is active and relationship confidence was enhanced"
+    } else {
+        "found; relationship confidence can be improved with hybrid analysis"
+    };
     output.push_str(&format!(
-        "- compile_commands.json: {}.\n",
-        if has_compile_commands {
-            "found; relationship confidence can be improved with hybrid analysis"
-        } else {
-            "not found; current relationships may be heuristic and incomplete"
-        }
+        "- compile_commands.json: {compile_commands_status}.\n"
     ));
     output.push('\n');
 
@@ -4151,6 +4153,7 @@ data: [DONE]
         assert!(summary.contains("## Build context"));
         assert!(summary.contains("Detected build systems: CMake"));
         assert!(summary.contains("compile_commands.json: found"));
+        assert!(summary.contains("hybrid analysis is active"));
         assert!(summary.contains("## First 1-3 days"));
         assert!(summary.contains("Review the module dependency and file-include graphs"));
 
