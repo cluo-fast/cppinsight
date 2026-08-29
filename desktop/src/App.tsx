@@ -1130,6 +1130,8 @@ export default function App() {
                     root={overview.root}
                     projectId={overview.project_id}
                     onStatus={setStatus}
+                    onInspectSymbol={(query) => void sendInspect(query)}
+                    onAskAi={(question) => void sendQuestion(question)}
                   />
                 ) : null}
 

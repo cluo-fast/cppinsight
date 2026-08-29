@@ -22,6 +22,7 @@ use crate::{
     try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
     InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
 };
+use rusqlite::Connection;
 use serde::Serialize;
 use std::path::PathBuf;
 use tauri::AppHandle;
@@ -78,6 +79,33 @@ fn collect_diagnostic_report(app: &tauri::AppHandle) -> Result<DiagnosticReport,
         std::env::consts::ARCH,
         projects,
     ))
+}
+
+fn validate_project_scope(
+    connection: &Connection,
+    project_id: i64,
+    root: &str,
+) -> Result<(), String> {
+    if project_id <= 0 {
+        return Err("project_id must be positive".to_string());
+    }
+    let stored_root = connection
+        .query_row(
+            "SELECT root FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .map_err(|error| format!("project scope lookup failed: {error}"))?;
+    let expected = PathBuf::from(root)
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(root));
+    let actual = PathBuf::from(stored_root.clone())
+        .canonicalize()
+        .unwrap_or_else(|_| PathBuf::from(stored_root));
+    if expected != actual {
+        return Err("project_id does not belong to the requested root".to_string());
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -336,8 +364,10 @@ pub async fn query_graph(
     request: GraphQueryRequest,
 ) -> Result<GraphQueryResponse, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, request.project_id, &expected_root)?;
         query_graph_at(&connection, request).map_err(|error| error.to_string())
     })
     .await
@@ -351,8 +381,10 @@ pub async fn save_graph_layout(
     layout: SavedGraphLayout,
 ) -> Result<(), String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, layout.project_id, &expected_root)?;
         save_graph_layout_at(&connection, layout).map_err(|error| error.to_string())
     })
     .await
@@ -368,8 +400,10 @@ pub async fn load_graph_layout(
     view_key: String,
 ) -> Result<Option<SavedGraphLayout>, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, project_id, &expected_root)?;
         load_graph_layout_at(&connection, project_id, graph_kind, &view_key)
             .map_err(|error| error.to_string())
     })

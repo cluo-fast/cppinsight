@@ -1048,6 +1048,60 @@ void appendAll(std::vector<T>& target, const std::vector<T>& source) {
     target.insert(target.end(), source.begin(), source.end());
 }
 
+void appendProjectSignatureRelations(ScanResult& result) {
+    std::vector<const SymbolInfo*> types;
+    for (const SymbolInfo& symbol : result.symbols) {
+        if (symbol.kind == "class" || symbol.kind == "struct" || symbol.kind == "enum") {
+            types.push_back(&symbol);
+        }
+    }
+    std::set<std::string> emitted;
+    for (const SymbolRelationInfo& relation : result.relations) {
+        emitted.insert(
+            relation.sourceStableKey + "\n" + relation.targetName + "\n" +
+            std::to_string(relation.line) + "\n" + relation.kind);
+    }
+    for (const SymbolInfo& function : result.symbols) {
+        if (function.kind != "function") {
+            continue;
+        }
+        const SymbolInfo* source = nullptr;
+        for (const SymbolInfo* candidate : types) {
+            if (candidate->qualifiedName == function.parentQualifiedName) {
+                source = candidate;
+                break;
+            }
+        }
+        const std::string sourceQualifiedName = source != nullptr
+            ? source->qualifiedName
+            : function.qualifiedName;
+        const std::string sourceStableKey = source != nullptr
+            ? source->stableKey
+            : function.stableKey;
+        for (const SymbolInfo* target : types) {
+            if (target->qualifiedName == sourceQualifiedName ||
+                (!containsIdentifier(function.signature, target->name) &&
+                 !containsIdentifier(function.signature, target->qualifiedName))) {
+                continue;
+            }
+            const std::string key = sourceStableKey + "\n" + target->qualifiedName + "\n" +
+                std::to_string(function.line) + "\nuses";
+            if (!emitted.insert(key).second) {
+                continue;
+            }
+            SymbolRelationInfo relation;
+            relation.filePath = function.filePath;
+            relation.line = function.line;
+            relation.sourceQualifiedName = sourceQualifiedName;
+            relation.sourceStableKey = sourceStableKey;
+            relation.targetName = target->qualifiedName;
+            relation.kind = "uses";
+            relation.confidence = function.confidence;
+            result.relations.push_back(std::move(relation));
+        }
+    }
+}
+
 } // namespace
 
 ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath) const {
@@ -1214,6 +1268,8 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
             appendAll(result.entryPoints, file.entryPoints);
         }
     }
+
+    appendProjectSignatureRelations(result);
 
     std::sort(result.files.begin(), result.files.end(), [](const FileInfo& left, const FileInfo& right) {
         return left.relativePath.string() < right.relativePath.string();

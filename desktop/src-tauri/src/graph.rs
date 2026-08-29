@@ -441,12 +441,27 @@ fn symbol_node_kind(value: &str) -> GraphNodeKind {
 }
 
 fn module_for_file(file: &str) -> String {
-    let normalized = file.replace('\\', "/");
+    let normalized = normalize_graph_path(file);
     let top = normalized
         .split('/')
         .find(|part| !part.is_empty() && *part != ".")
         .unwrap_or(".");
     format!("module:{top}")
+}
+
+fn normalize_graph_path(value: &str) -> String {
+    let mut parts = Vec::new();
+    let normalized = value.replace('\\', "/");
+    for part in normalized.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            segment => parts.push(segment),
+        }
+    }
+    parts.join("/")
 }
 
 fn stable_id(prefix: &str, parts: &[&str]) -> String {
@@ -794,11 +809,12 @@ fn load_includes(
     for row in rows {
         let (row_id, file, line, target_name, resolved, resolved_path) =
             row.map_err(store_error)?;
-        let source = format!("file:{}", file.replace('\\', "/"));
+        let source_path = normalize_graph_path(&file);
+        let source = format!("file:{source_path}");
         let target_path = if resolved && !resolved_path.is_empty() {
-            resolved_path.replace('\\', "/")
+            normalize_graph_path(&resolved_path)
         } else {
-            target_name.clone()
+            normalize_graph_path(&target_name)
         };
         let target = if resolved && !resolved_path.is_empty() {
             format!("file:{target_path}")
@@ -915,6 +931,9 @@ fn load_canonical_graph(
             for root in roots {
                 let root = root.map_err(store_error)?;
                 if graph.nodes.contains_key(&root) {
+                    if let Some(node) = graph.nodes.get_mut(&root) {
+                        node.kind = GraphNodeKind::Entry;
+                    }
                     graph.default_roots.push(root);
                 }
             }

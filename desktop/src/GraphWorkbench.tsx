@@ -38,6 +38,8 @@ type Props = {
   root: string;
   projectId: number;
   onStatus?: (message: string | null) => void;
+  onInspectSymbol?: (query: string) => void;
+  onAskAi?: (question: string) => void;
 };
 
 function createRequest(
@@ -128,7 +130,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -576,6 +578,16 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
                 <span className="graph-node-dot" style={{ background: nodeColor(selected) }} />
                 <strong>{selected.label}</strong>
               </div>
+              {(selected.kind === "function" || selected.kind === "class" || selected.kind === "struct" || selected.kind === "symbol") && selected.qualified_name ? (
+                <div className="graph-inspector-actions">
+                  <button className="secondary" onClick={() => onInspectSymbol?.(selected.qualified_name)}>
+                    查影响面
+                  </button>
+                  <button className="secondary" onClick={() => onAskAi?.(`请解释 ${selected.qualified_name} 的职责、调用关系和潜在影响面。`)}>
+                    问 AI
+                  </button>
+                </div>
+              ) : null}
               <div className="graph-node-actions">
                 <button
                   className="secondary"
