@@ -16,6 +16,7 @@ import {
   saveWorkspace,
   setOpenAiSettings
 } from "./api";
+import GraphWorkbench from "./GraphWorkbench";
 import type {
   AskResponse,
   ChatMessage,
@@ -234,6 +235,7 @@ export default function App() {
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [diagnosticPreview, setDiagnosticPreview] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
+  const [showGraph, setShowGraph] = useState(false);
 
   const sessionsRef = useRef(sessions);
   sessionsRef.current = sessions;
@@ -1113,8 +1115,23 @@ export default function App() {
                     >
                       导出客户摘要
                     </button>
+                    <button
+                      className={`secondary${showGraph ? " active-action" : ""}`}
+                      disabled={projectIndexing || active.indexMissing}
+                      onClick={() => setShowGraph((current) => !current)}
+                    >
+                      {showGraph ? "收起关系图" : "打开关系图"}
+                    </button>
                   </div>
                 </section>
+
+                {showGraph ? (
+                  <GraphWorkbench
+                    root={overview.root}
+                    projectId={overview.project_id}
+                    onStatus={setStatus}
+                  />
+                ) : null}
 
                 <section className="panel-grid">
                   <article className="panel">

@@ -39,6 +39,19 @@ pub enum GraphConfidence {
     Unresolved,
 }
 
+impl Display for GraphConfidence {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        let value = match self {
+            Self::Resolved => "resolved",
+            Self::Hybrid => "hybrid",
+            Self::Heuristic => "heuristic",
+            Self::Ambiguous => "ambiguous",
+            Self::Unresolved => "unresolved",
+        };
+        formatter.write_str(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GraphNodeKind {

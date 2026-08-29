@@ -7,6 +7,7 @@ pub mod workspace;
 
 pub use index::write_index;
 
+use crate::graph::{query_graph, GraphDirection, GraphFilters, GraphKind, GraphQueryRequest};
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -3151,6 +3152,67 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     }
     output.push('\n');
 
+    let graph_request = |graph_kind: GraphKind, depth: u32| GraphQueryRequest {
+        protocol_version: crate::graph::GRAPH_PROTOCOL_VERSION,
+        project_id,
+        graph_kind,
+        root_node_ids: Vec::new(),
+        direction: GraphDirection::Both,
+        depth,
+        filters: GraphFilters::default(),
+        max_nodes: 500,
+        path_target: None,
+        continuation: None,
+    };
+    output.push_str("## Relationship graph insights\n");
+    if let Ok(modules) = query_graph(connection, graph_request(GraphKind::ModuleDependencies, 1)) {
+        output.push_str(&format!(
+            "- Module dependency graph: {} nodes, {} weighted relations, {} cycles.\n",
+            modules.statistics.original_node_count,
+            modules.statistics.original_edge_count,
+            modules.statistics.cycle_count
+        ));
+        for edge in modules.edges.iter().take(8) {
+            output.push_str(&format!(
+                "- `{}` → `{}` ({}, weight {}, confidence {})\n",
+                edge.source, edge.target, edge.kind, edge.weight, edge.confidence
+            ));
+        }
+    }
+    if let Ok(includes) = query_graph(connection, graph_request(GraphKind::FileIncludes, 1)) {
+        output.push_str(&format!(
+            "- Include graph: {} nodes, {} relations, {} unresolved edges.\n",
+            includes.statistics.original_node_count,
+            includes.statistics.original_edge_count,
+            includes.statistics.unresolved_edge_count
+        ));
+    }
+    if let Ok(classes) = query_graph(connection, graph_request(GraphKind::ClassRelations, 1)) {
+        output.push_str(&format!(
+            "- Type relation graph: {} nodes, {} relations, {} cycles.\n",
+            classes.statistics.original_node_count,
+            classes.statistics.original_edge_count,
+            classes.statistics.cycle_count
+        ));
+    }
+    if let Ok(entries) = query_graph(connection, graph_request(GraphKind::EntryPaths, 8)) {
+        output.push_str(&format!(
+            "- Entry-path graph: {} nodes, {} call relations; key nodes: {}.\n",
+            entries.statistics.original_node_count,
+            entries.statistics.original_edge_count,
+            if entries.statistics.central_node_ids.is_empty() {
+                "未计算".to_string()
+            } else {
+                entries.statistics.central_node_ids
+                    [..entries.statistics.central_node_ids.len().min(5)]
+                    .join(", ")
+            }
+        ));
+    }
+    output.push_str(
+        "Graph findings are heuristic and should be checked against the cited source evidence.\n\n",
+    );
+
     output.push_str("## Caveat\n");
     output.push_str("Generated for onboarding/estimation. Validate before committing scope.\n");
     Ok(output)
@@ -3754,6 +3816,36 @@ data: [DONE]
             )
             .expect("count calls");
         assert_eq!(count, 1);
+    }
+
+    #[test]
+    fn client_summary_includes_graph_insights_when_graph_facts_exist() {
+        let connection = open_memory_db();
+        connection
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES('D:/summary', 'now', 0, 0, 0, '[]', 'heuristic', 'heuristic', 3, 'test', 1, 1)",
+                [],
+            )
+            .unwrap();
+        let project_id = connection.last_insert_rowid();
+        connection
+            .execute(
+                "INSERT INTO module_relations(
+                    project_id, source_module, target_module, relation_kind,
+                    weight, confidence, evidence_count
+                 ) VALUES(?1, 'module:app', 'module:core', 'include', 3, 'resolved', 3)",
+                [project_id],
+            )
+            .unwrap();
+
+        let summary = super::build_client_summary(&connection, project_id).unwrap();
+        assert!(summary.contains("## Relationship graph insights"));
+        assert!(summary.contains("module:app` → `module:core"));
+        assert!(summary.contains("heuristic"));
     }
 
     #[test]

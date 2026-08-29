@@ -16,7 +16,7 @@ cargo build --release --bin cppinsight-workbench
 
 ```powershell
 cd tools/mcp-server
-npm install
+pnpm install --frozen-lockfile
 ```
 
 ## Cursor MCP config
@@ -43,10 +43,15 @@ Add to your MCP settings (path adjust as needed):
 | --- | --- |
 | `cppinsight_inspect` | Symbol defs / callers / callees / entry paths (JSON) |
 | `cppinsight_ask` | Natural-language Q&A with citations |
+| `cppinsight_graph` | Versioned module/call/class/include/entry-path graph query (JSON) |
+
+`cppinsight_graph` accepts `projectPath`, one of the five `graphKind` values, optional roots/direction/depth/filters/path target and `maxNodes` (1–500). It forwards the request through stdin to the Workbench CLI, so paths and filter content are not embedded in one long command argument. Desktop, CLI and MCP all use protocol v1; graph analysis stays local and does not require AI.
 
 ## CLI equivalent
 
 ```powershell
 .\desktop\src-tauri\target\release\cppinsight-workbench.exe inspect --root D:\path\to\project encryptFile
 .\desktop\src-tauri\target\release\cppinsight-workbench.exe ask --root D:\path\to\project "入口在哪？"
+.\desktop\src-tauri\target\release\cppinsight-workbench.exe graph --root D:\path\to\project --request graph-request.json
+.\desktop\src-tauri\target\release\cppinsight-workbench.exe graph --root D:\path\to\project --request - < graph-request.json
 ```

@@ -26,6 +26,10 @@ cargo test --manifest-path src-tauri\Cargo.toml
 
 `verify:release` 允许尚未生成的扫描器资源，适合本地源码检查；打包脚本和 Windows CI 使用严格的 `verify:bundle`，要求 `resources/cppinsight.exe` 已实际存在。
 
+## 关系图协议
+
+桌面端通过 `query_graph` 调用统一的 Graph Protocol v1，支持模块依赖、函数调用、类关系、文件包含和入口路径五类图。布局按稳定节点 ID 与 view key 保存；CLI/MCP 复用同一协议。协议字段和 stdin 查询示例见 [`docs/graph-protocol-v1.md`](../docs/graph-protocol-v1.md)。
+
 ## 开发模式
 
 先确保 `desktop/src-tauri/resources/cppinsight.exe` 已生成，再运行：
