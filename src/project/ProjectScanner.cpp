@@ -615,10 +615,9 @@ ExtractedFunction extractFunctionSymbol(
         return ExtractedFunction{};
     }
 
-    // Bare `foo();` calls look like declarations; require a return type, scope, or destructor.
+    // Bare `foo();` calls look like declarations; require a return type or destructor.
     const bool hasTypeOrScope =
         declarator.find(' ') != std::string::npos ||
-        declarator.find("::") != std::string::npos ||
         (!declarator.empty() && declarator[0] == '~');
     if (!hasTypeOrScope && !hasBody) {
         return ExtractedFunction{};
@@ -673,7 +672,7 @@ void extractCalls(
         }
         if (index > 0) {
             const unsigned char previous = static_cast<unsigned char>(code[index - 1]);
-            if (isIdentifierPart(previous) || previous == ':') {
+            if (isIdentifierPart(previous)) {
                 continue;
             }
         }
@@ -682,7 +681,31 @@ void extractCalls(
         while (end < code.size() && isIdentifierPart(static_cast<unsigned char>(code[end]))) {
             ++end;
         }
-        std::size_t cursor = end;
+        // Keep the complete qualified callee (for example, ns::helper()) so
+        // resolver ranking can use the same qualified-name key as definitions.
+        std::size_t qualifiedEnd = end;
+        while (qualifiedEnd < code.size()) {
+            std::size_t scopeCursor = qualifiedEnd;
+            while (scopeCursor < code.size() && std::isspace(static_cast<unsigned char>(code[scopeCursor])) != 0) {
+                ++scopeCursor;
+            }
+            if (scopeCursor + 1 >= code.size() || code[scopeCursor] != ':' || code[scopeCursor + 1] != ':') {
+                break;
+            }
+            scopeCursor += 2;
+            while (scopeCursor < code.size() && std::isspace(static_cast<unsigned char>(code[scopeCursor])) != 0) {
+                ++scopeCursor;
+            }
+            if (scopeCursor >= code.size() || !isIdentifierStart(static_cast<unsigned char>(code[scopeCursor]))) {
+                break;
+            }
+            std::size_t componentEnd = scopeCursor + 1;
+            while (componentEnd < code.size() && isIdentifierPart(static_cast<unsigned char>(code[componentEnd]))) {
+                ++componentEnd;
+            }
+            qualifiedEnd = componentEnd;
+        }
+        std::size_t cursor = qualifiedEnd;
         while (cursor < code.size() && std::isspace(static_cast<unsigned char>(code[cursor])) != 0) {
             ++cursor;
         }
@@ -690,9 +713,11 @@ void extractCalls(
             continue;
         }
 
-        const std::string name = code.substr(index, end - index);
-        index = end - 1;
-        if (name == functionSymbolOnLine || contains(ignoredNames, name)) {
+        const std::string name = code.substr(index, qualifiedEnd - index);
+        const std::size_t lastScope = name.rfind("::");
+        const std::string leafName = lastScope == std::string::npos ? name : name.substr(lastScope + 2);
+        index = qualifiedEnd - 1;
+        if (leafName == functionSymbolOnLine || contains(ignoredNames, leafName)) {
             continue;
         }
         if (!emittedOnLine.insert(name).second) {
@@ -980,7 +1005,7 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
                 code,
                 relativePath,
                 lineNumber,
-                function.name,
+                function.hasBody ? function.name : std::string(),
                 callerQualifiedName,
                 callerStableKey,
                 analysis.calls);

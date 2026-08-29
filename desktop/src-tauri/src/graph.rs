@@ -33,6 +33,7 @@ pub enum GraphDirection {
 #[serde(rename_all = "snake_case")]
 pub enum GraphConfidence {
     Resolved,
+    Precise,
     Hybrid,
     Heuristic,
     Ambiguous,
@@ -43,6 +44,7 @@ impl Display for GraphConfidence {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let value = match self {
             Self::Resolved => "resolved",
+            Self::Precise => "precise",
             Self::Hybrid => "hybrid",
             Self::Heuristic => "heuristic",
             Self::Ambiguous => "ambiguous",
@@ -331,6 +333,7 @@ pub struct GraphEvidence {
 pub struct GraphConfidenceSummary {
     pub overall: GraphConfidence,
     pub resolved: usize,
+    pub precise: usize,
     pub hybrid: usize,
     pub heuristic: usize,
     pub ambiguous: usize,
@@ -342,6 +345,7 @@ impl Default for GraphConfidenceSummary {
         Self {
             overall: GraphConfidence::Heuristic,
             resolved: 0,
+            precise: 0,
             hybrid: 0,
             heuristic: 0,
             ambiguous: 0,
@@ -408,6 +412,9 @@ struct CanonicalGraph {
     default_roots: Vec<String>,
 }
 
+type ModuleEdgeKey = (String, String, String);
+type ModuleEvidence = (String, u64, GraphConfidence, String);
+
 fn store_error(error: rusqlite::Error) -> GraphQueryError {
     GraphQueryError::Store(error.to_string())
 }
@@ -415,6 +422,7 @@ fn store_error(error: rusqlite::Error) -> GraphQueryError {
 fn parse_confidence(value: &str) -> GraphConfidence {
     match value {
         "resolved" => GraphConfidence::Resolved,
+        "precise" => GraphConfidence::Precise,
         "hybrid" => GraphConfidence::Hybrid,
         "ambiguous" => GraphConfidence::Ambiguous,
         "unresolved" => GraphConfidence::Unresolved,
@@ -600,6 +608,75 @@ fn load_modules(
     project_id: i64,
     graph: &mut CanonicalGraph,
 ) -> Result<(), GraphQueryError> {
+    let mut evidence_by_edge: HashMap<ModuleEdgeKey, Vec<ModuleEvidence>> = HashMap::new();
+    let mut relation_statement = connection
+        .prepare(
+            "SELECT s_source.file, sr.evidence_line, sr.relation_kind, sr.confidence,
+                    s_target.file, sr.target_name
+             FROM symbol_relations sr
+             JOIN symbols s_source ON s_source.project_id = sr.project_id AND s_source.stable_key = sr.source_key
+             JOIN symbols s_target ON s_target.project_id = sr.project_id AND s_target.stable_key = sr.target_key
+             WHERE sr.project_id = ?1 AND sr.source_key != '' AND sr.target_key != ''
+             ORDER BY sr.id",
+        )
+        .map_err(store_error)?;
+    let relation_rows = relation_statement
+        .query_map(params![project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })
+        .map_err(store_error)?;
+    for row in relation_rows {
+        let (source_file, line, kind, confidence, target_file, target_name) =
+            row.map_err(store_error)?;
+        let key = (
+            module_for_file(&source_file),
+            module_for_file(&target_file),
+            kind.clone(),
+        );
+        evidence_by_edge.entry(key).or_default().push((
+            source_file,
+            line,
+            parse_confidence(&confidence),
+            format!("{kind} {target_name}"),
+        ));
+    }
+    let mut include_statement = connection
+        .prepare(
+            "SELECT file, line, target, resolved_path
+             FROM includes WHERE project_id = ?1 AND resolved = 1 ORDER BY id",
+        )
+        .map_err(store_error)?;
+    let include_rows = include_statement
+        .query_map(params![project_id], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })
+        .map_err(store_error)?;
+    for row in include_rows {
+        let (source_file, line, target_name, resolved_path) = row.map_err(store_error)?;
+        let key = (
+            module_for_file(&source_file),
+            module_for_file(&resolved_path),
+            "include".to_string(),
+        );
+        evidence_by_edge.entry(key).or_default().push((
+            source_file,
+            line,
+            GraphConfidence::Resolved,
+            format!("include {target_name}"),
+        ));
+    }
     let mut statement = connection
         .prepare(
             "SELECT source_module, target_module, relation_kind, weight, confidence
@@ -637,15 +714,55 @@ fn load_modules(
                     metadata: BTreeMap::new(),
                 });
         }
+        let edge_id = stable_id("edge", &[&source, &target, &kind]);
+        let evidence_rows = evidence_by_edge
+            .remove(&(source.clone(), target.clone(), kind.clone()))
+            .unwrap_or_default();
+        let mut evidence_ids = Vec::new();
+        for (index, (file, line, evidence_confidence, detail)) in
+            evidence_rows.into_iter().enumerate()
+        {
+            let evidence_id = stable_id(
+                "ev",
+                &[&edge_id, &file, &line.to_string(), &index.to_string()],
+            );
+            graph.evidence.insert(
+                evidence_id.clone(),
+                GraphEvidence {
+                    id: evidence_id.clone(),
+                    edge_id: edge_id.clone(),
+                    file,
+                    line,
+                    detail,
+                    confidence: evidence_confidence,
+                },
+            );
+            evidence_ids.push(evidence_id);
+        }
+        if evidence_ids.is_empty() {
+            let evidence_id = stable_id("ev", &[&edge_id, "aggregate"]);
+            graph.evidence.insert(
+                evidence_id.clone(),
+                GraphEvidence {
+                    id: evidence_id.clone(),
+                    edge_id: edge_id.clone(),
+                    file: String::new(),
+                    line: 0,
+                    detail: format!("aggregated {kind} relation ({weight} observations)"),
+                    confidence: parse_confidence(&confidence),
+                },
+            );
+            evidence_ids.push(evidence_id);
+        }
         graph.edges.push(GraphEdge {
-            id: stable_id("edge", &[&source, &target, &kind]),
+            id: edge_id,
             source,
             target,
             kind,
             weight,
             confidence: parse_confidence(&confidence),
             ambiguous: confidence == "ambiguous",
-            evidence_ids: Vec::new(),
+            evidence_ids,
         });
     }
     Ok(())
@@ -683,7 +800,13 @@ fn load_includes(
         } else {
             target_name.clone()
         };
-        let target = format!("file:{target_path}");
+        let target = if resolved && !resolved_path.is_empty() {
+            format!("file:{target_path}")
+        } else {
+            // Unresolved include targets must remain stable when source lines
+            // move; do not bake the evidence line into the node identity.
+            stable_id("unresolved", &["include", &target_name])
+        };
         for (id, path, confidence) in [
             (&source, file.as_str(), GraphConfidence::Resolved),
             (
@@ -698,7 +821,11 @@ fn load_includes(
         ] {
             graph.nodes.entry(id.clone()).or_insert_with(|| GraphNode {
                 id: id.clone(),
-                kind: GraphNodeKind::File,
+                kind: if resolved {
+                    GraphNodeKind::File
+                } else {
+                    GraphNodeKind::Unresolved
+                },
                 label: path.rsplit('/').next().unwrap_or(path).to_string(),
                 qualified_name: path.to_string(),
                 file: path.to_string(),
@@ -1045,6 +1172,7 @@ fn confidence_summary(edges: &[GraphEdge]) -> GraphConfidenceSummary {
     for edge in edges {
         match edge.confidence {
             GraphConfidence::Resolved => summary.resolved += 1,
+            GraphConfidence::Precise => summary.precise += 1,
             GraphConfidence::Hybrid => summary.hybrid += 1,
             GraphConfidence::Heuristic => summary.heuristic += 1,
             GraphConfidence::Ambiguous => summary.ambiguous += 1,
@@ -1059,6 +1187,8 @@ fn confidence_summary(edges: &[GraphEdge]) -> GraphConfidenceSummary {
         GraphConfidence::Heuristic
     } else if summary.hybrid > 0 {
         GraphConfidence::Hybrid
+    } else if summary.precise > 0 {
+        GraphConfidence::Precise
     } else {
         GraphConfidence::Resolved
     };

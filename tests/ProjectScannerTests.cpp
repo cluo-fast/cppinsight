@@ -324,6 +324,7 @@ void testScannerEmitsStableOwnedGraphFacts() {
         "};\n"
         "void Runner::run() {\n"
         "    helper();\n"
+        "    app::helper();\n"
         "}\n"
         "}\n"
         "int main() {\n"
@@ -349,6 +350,8 @@ void testScannerEmitsStableOwnedGraphFacts() {
             "method signature should emit a class uses relation");
     require(hasOwnedCall(first, "app::Runner::run", "helper"),
             "call should retain its enclosing function");
+    require(hasOwnedCall(first, "app::Runner::run", "app::helper"),
+            "qualified call should retain its complete target name");
     require(hasEntry(first, "main", "program"), "main should be a program entry fact");
 
     const std::map<std::string, std::string> firstKeys = stableKeysByQualifiedName(first);

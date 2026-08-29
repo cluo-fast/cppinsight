@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import cytoscape from "cytoscape";
 import {
   loadGraphLayout,
   queryGraph,
@@ -112,6 +113,21 @@ function edgeKey(edge: GraphEdge): string {
   return `${edge.source}->${edge.target}`;
 }
 
+function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryResponse): GraphQueryResponse {
+  const nodes = new Map(previous.nodes.map((node) => [node.id, node]));
+  next.nodes.forEach((node) => nodes.set(node.id, node));
+  const edges = new Map(previous.edges.map((edge) => [edge.id, edge]));
+  next.edges.forEach((edge) => edges.set(edge.id, edge));
+  const evidence = new Map(previous.evidence.map((item) => [item.id, item]));
+  next.evidence.forEach((item) => evidence.set(item.id, item));
+  return {
+    ...next,
+    nodes: [...nodes.values()],
+    edges: [...edges.values()],
+    evidence: [...evidence.values()]
+  };
+}
+
 export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
@@ -130,7 +146,8 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const cytoscapeContainerRef = useRef<HTMLDivElement | null>(null);
-  const [cytoscapeFactory, setCytoscapeFactory] = useState<((options: any) => any) | null>(null);
+  const cytoscapeRef = useRef<any>(null);
+  const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
@@ -145,38 +162,17 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   );
 
   useEffect(() => {
-    let cancelled = false;
-    // Vite keeps this optional import external so source-only checkouts can still use the
-    // deterministic SVG renderer. Release installs include Cytoscape.js and use the adapter.
-    const packageName = "cytoscape";
-    void import(/* @vite-ignore */ packageName)
-      .then((module) => {
-        if (!cancelled) {
-          setCytoscapeFactory((module as any).default ?? module);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setCytoscapeFactory(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!cytoscapeFactory || !cytoscapeContainerRef.current || nodes.length === 0) {
+    if (!cytoscapeContainerRef.current || nodes.length === 0) {
       return undefined;
     }
     const nodeElements = nodes.map((node) => ({
-      data: { id: node.id, label: shortLabel(node) },
+      data: { id: node.id, label: shortLabel(node), color: nodeColor(node) },
       position: positions[node.id] ?? { x: 80, y: 80 }
     }));
     const edgeElements = edges.map((edge) => ({
       data: { id: edge.id, source: edge.source, target: edge.target, label: edge.kind }
     }));
-    const cy = cytoscapeFactory({
+    const cy = cytoscape({
       container: cytoscapeContainerRef.current,
       elements: { nodes: nodeElements, edges: edgeElements },
       style: [
@@ -184,7 +180,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
           selector: "node",
           style: {
             label: "data(label)",
-            "background-color": "#54a7ff",
+            "background-color": "data(color)",
             color: "#e8eef5",
             "font-size": 11,
             "text-valign": "bottom",
@@ -203,16 +199,23 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
             "curve-style": "bezier"
           }
         },
+        { selector: "node.central", style: { width: 34, height: 34, "border-width": 3 } },
         {
           selector: ".path",
-          style: { "border-width": 3, "border-color": "#fff3bf", "line-color": "#ffd166" }
+          style: { "border-width": 3, "border-color": "#fff3bf", "line-color": "#ffd166", width: 4 }
         }
       ],
       layout: { name: "preset", fit: true, padding: 40 }
     });
+    cytoscapeRef.current = cy;
     cy.on("tap", "node", (event: any) => setSelectedId(event.target.id()));
     cy.nodes().forEach((node: any) => {
       if (pathNodes.has(node.id())) node.addClass("path");
+      const source = nodes.find((item) => item.id === node.id());
+      if (source && centralNodes.has(source.id)) node.addClass("central");
+    });
+    cy.edges().forEach((edge: any) => {
+      if (pathNodes.has(edge.source().id()) && pathNodes.has(edge.target().id())) edge.addClass("path");
     });
     cy.on("dragfree", "node", () => {
       const next: Record<string, GraphPosition> = {};
@@ -222,8 +225,21 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
       });
       setPositions(next);
     });
-    return () => cy.destroy();
-  }, [cytoscapeFactory, nodes, edges, positions, pathNodes]);
+    return () => {
+      cy.destroy();
+      cytoscapeRef.current = null;
+    };
+  }, [nodes, edges, pathNodes, centralNodes]);
+
+  useEffect(() => {
+    const cy = cytoscapeRef.current;
+    if (!cy) return;
+    cy.nodes().forEach((node: any) => {
+      const position = positions[node.id()];
+      if (position) node.position(position);
+    });
+    cy.zoom(zoom);
+  }, [positions, zoom]);
 
   function layoutFor(nodesToLayout: GraphNode[], saved?: Record<string, GraphPosition>) {
     const next: Record<string, GraphPosition> = {};
@@ -253,9 +269,10 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
           pathTarget
         )
       );
-      setResponse(next);
+      const merged = nextContinuation && response ? mergeGraphResponses(response, next) : next;
+      setResponse(merged);
       setSelectedId((current) =>
-        current && next.nodes.some((node) => node.id === current) ? current : next.nodes[0]?.id ?? null
+        current && merged.nodes.some((node) => node.id === current) ? current : merged.nodes[0]?.id ?? null
       );
       const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
       let saved: SavedGraphLayout | null = null;
@@ -264,7 +281,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
       } catch {
         // Layout storage is best-effort; graph data remains usable when upgrading an old index.
       }
-      layoutFor(next.nodes, saved?.positions);
+      layoutFor(merged.nodes, saved?.positions);
       onStatus?.(null);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -317,38 +334,44 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  function downloadDataUrl(dataUrl: string, filename: string) {
+    const anchor = document.createElement("a");
+    anchor.href = dataUrl;
+    anchor.download = filename;
+    anchor.click();
+  }
+
+  function graphSvgSnapshot(): string {
+    const escapeXml = (value: string) => value.replace(/[<>&'\"]/g, (character) => ({
+      "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", "\"": "&quot;"
+    }[character] ?? character));
+    const lines = edges.map((edge) => {
+      const source = positions[edge.source];
+      const target = positions[edge.target];
+      if (!source || !target) return "";
+      const highlighted = pathNodes.has(edge.source) && pathNodes.has(edge.target);
+      return `<line x1="${source.x}" y1="${source.y}" x2="${target.x}" y2="${target.y}" stroke="${highlighted ? "#ffd166" : "#7890a8"}" stroke-width="${Math.min(6, 1 + edge.weight / 2)}" marker-end="url(#arrow)"/>`;
+    }).join("");
+    const circles = nodes.map((node) => {
+      const position = positions[node.id] ?? { x: 80, y: 80 };
+      const radius = centralNodes.has(node.id) ? 17 : 13;
+      return `<circle cx="${position.x}" cy="${position.y}" r="${radius}" fill="${nodeColor(node)}"/><text x="${position.x}" y="${position.y + 30}" text-anchor="middle" fill="#e8eef5" font-size="11">${escapeXml(shortLabel(node))}</text>`;
+    }).join("");
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${CANVAS_WIDTH}" height="${CANVAS_HEIGHT}" viewBox="0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}"><defs><marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#7890a8"/></marker></defs><rect width="100%" height="100%" fill="#0d141b"/>${lines}${circles}</svg>`;
+  }
+
   function exportSvg() {
-    const svg = canvasRef.current;
-    if (!svg) {
-      setError("Cytoscape 画布当前没有可导出的 SVG 快照");
-      return;
-    }
-    const serialized = new XMLSerializer().serializeToString(svg);
+    const serialized = graphSvgSnapshot();
     downloadBlob(new Blob([serialized], { type: "image/svg+xml;charset=utf-8" }), `cppinsight-${graphKind}.svg`);
   }
 
   function exportPng() {
-    const svg = canvasRef.current;
-    if (!svg) {
-      setError("Cytoscape 画布当前没有可导出的 PNG 快照");
+    const cy = cytoscapeRef.current;
+    if (cy) {
+      downloadDataUrl(cy.png({ bg: "#0d141b", full: true, scale: 2 }), `cppinsight-${graphKind}.png`);
       return;
     }
-    const serialized = new XMLSerializer().serializeToString(svg);
-    const image = new Image();
-    image.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = CANVAS_WIDTH;
-      canvas.height = CANVAS_HEIGHT;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.fillStyle = "#0d141b";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(image, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob((blob) => {
-        if (blob) downloadBlob(blob, `cppinsight-${graphKind}.png`);
-      }, "image/png");
-    };
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
+    setError("Cytoscape 画布尚未初始化");
   }
 
   function onPointerMove(event: React.PointerEvent<SVGSVGElement>) {
@@ -430,6 +453,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
           <select value={confidence} onChange={(event) => setConfidence(event.target.value as GraphConfidence | "all")}>
             <option value="all">全部</option>
             <option value="resolved">已解析</option>
+            <option value="precise">编译数据库</option>
             <option value="heuristic">启发式</option>
             <option value="ambiguous">歧义</option>
             <option value="unresolved">未解析</option>
@@ -467,7 +491,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
         <div className="graph-canvas-wrap">
           {nodes.length === 0 ? (
             <div className="graph-empty muted">暂无关系数据。请先完成索引，或调整图类型与筛选条件。</div>
-          ) : cytoscapeFactory ? (
+          ) : cytoscapeReady ? (
             <div
               ref={cytoscapeContainerRef}
               className="graph-canvas cytoscape-canvas"

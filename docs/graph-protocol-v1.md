@@ -17,7 +17,7 @@ CppInsight desktop、Workbench CLI 和 MCP 服务共享同一份本地关系图�
     "file_paths": [],
     "symbol_kinds": ["function"],
     "relation_kinds": ["calls"],
-    "confidence": ["resolved", "heuristic"],
+    "confidence": ["resolved", "precise", "heuristic"],
     "search": null
   },
   "max_nodes": 500,
@@ -84,7 +84,7 @@ CppInsight desktop、Workbench CLI 和 MCP 服务共享同一份本地关系图�
   "evidence": [
     { "id": "ev:0123456789abcdef", "edge_id": "edge:0123456789abcdef", "file": "src/main.cpp", "line": 20, "detail": "calls missing", "confidence": "unresolved" }
   ],
-  "confidence": { "overall": "unresolved", "resolved": 0, "hybrid": 0, "heuristic": 0, "ambiguous": 0, "unresolved": 1 },
+  "confidence": { "overall": "unresolved", "resolved": 0, "precise": 0, "hybrid": 0, "heuristic": 0, "ambiguous": 0, "unresolved": 1 },
   "statistics": { "original_node_count": 2, "returned_node_count": 2, "original_edge_count": 1, "returned_edge_count": 1, "cycle_count": 0, "unresolved_edge_count": 1, "ambiguous_edge_count": 0, "central_node_ids": ["sym:0123456789abcdef", "unresolved:0123456789abcdef"], "shortest_path_node_ids": [] },
   "truncated": false,
   "truncation_reason": null,

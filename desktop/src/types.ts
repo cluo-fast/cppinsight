@@ -249,6 +249,7 @@ export type GraphKind =
 export type GraphDirection = "incoming" | "outgoing" | "both";
 export type GraphConfidence =
   | "resolved"
+  | "precise"
   | "hybrid"
   | "heuristic"
   | "ambiguous"
@@ -330,6 +331,7 @@ export interface GraphEvidence {
 export interface GraphConfidenceSummary {
   overall: GraphConfidence;
   resolved: number;
+  precise: number;
   hybrid: number;
   heuristic: number;
   ambiguous: number;
