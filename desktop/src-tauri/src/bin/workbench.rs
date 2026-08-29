@@ -1,3 +1,4 @@
+use cppinsight_ai_lib::graph::{query_graph, GraphQueryRequest};
 use cppinsight_ai_lib::{
     ask_project_at, build_client_summary, default_db_path, find_project_id_by_root,
     index_scan_json_at, inspect_symbol_at, list_projects, open_database_at, project_index_db_path,
@@ -5,6 +6,7 @@ use cppinsight_ai_lib::{
 };
 use std::env;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -16,6 +18,7 @@ fn print_usage() {
            cppinsight-workbench list [--db <sqlite>]\n\
            cppinsight-workbench inspect --root <project-root> <query> [--depth N] [--db <sqlite>]\n\
            cppinsight-workbench inspect --project <id> <query> [--depth N] [--db <sqlite>]\n\
+           cppinsight-workbench graph --root <project-root> --request <request.json|-> [--db <sqlite>]\n\
            cppinsight-workbench ask --project <id> <question> [--db <sqlite>]\n\
            cppinsight-workbench ask --root <project-root> <question> [--db <sqlite>]\n\
            cppinsight-workbench summary --project <id> [--output <file>] [--db <sqlite>]\n\
@@ -184,14 +187,148 @@ async fn run(mut args: Vec<String>) -> Result<(), String> {
     }
 }
 
+async fn run_with_io<R: Read, W: Write>(
+    args: Vec<String>,
+    mut stdin: R,
+    mut stdout: W,
+) -> Result<(), String> {
+    if args.first().map(String::as_str) != Some("graph") {
+        return run(args).await;
+    }
+
+    let mut args = args;
+    let explicit_db = take_flag(&mut args, "--db").map(PathBuf::from);
+    let request_path = take_flag(&mut args, "--request")
+        .ok_or_else(|| "graph requires --request <request.json|->".to_string())?;
+    let root = take_flag(&mut args, "--root")
+        .ok_or_else(|| "graph requires --root <project-root>".to_string())?;
+    let command = args.remove(0);
+    debug_assert_eq!(command, "graph");
+    if !args.is_empty() {
+        return Err(format!("unexpected graph arguments: {}", args.join(" ")));
+    }
+
+    let db_path = resolve_db(explicit_db, Some(&root));
+    let project_id = find_project_id_by_root(&db_path, &root)?;
+    let mut request_json = String::new();
+    if request_path == "-" {
+        stdin
+            .read_to_string(&mut request_json)
+            .map_err(|error| format!("failed to read graph request from stdin: {error}"))?;
+    } else {
+        request_json = fs::read_to_string(&request_path)
+            .map_err(|error| format!("failed to read graph request {request_path}: {error}"))?;
+    }
+    let mut request: GraphQueryRequest = serde_json::from_str(&request_json)
+        .map_err(|error| format!("failed to parse graph request JSON: {error}"))?;
+    request.project_id = project_id;
+    let connection = open_database_at(&db_path)?;
+    let response = query_graph(&connection, request).map_err(|error| error.to_string())?;
+    serde_json::to_writer_pretty(&mut stdout, &response)
+        .map_err(|error| format!("failed to encode graph response JSON: {error}"))?;
+    writeln!(stdout).map_err(|error| format!("failed to write graph response: {error}"))?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
-    match run(args).await {
+    match run_with_io(args, std::io::stdin(), std::io::stdout()).await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("error: {error}");
             ExitCode::from(1)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_with_io;
+    use cppinsight_ai_lib::open_database_at;
+    use serde_json::{json, Value};
+    use std::io::Cursor;
+
+    fn graph_database() -> (tempfile::TempDir, std::path::PathBuf, String, i64) {
+        let temporary = tempfile::tempdir().unwrap();
+        let database = temporary.path().join("graph-cli.sqlite");
+        let connection = open_database_at(&database).unwrap();
+        let root = "D:/cli-graph".to_string();
+        connection
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES(?1, 'now', 0, 0, 0, '[]', 'heuristic', 'heuristic', 3, 'test', 1, 1)",
+                [&root],
+            )
+            .unwrap();
+        let project_id = connection.last_insert_rowid();
+        connection
+            .execute(
+                "INSERT INTO module_relations(
+                    project_id, source_module, target_module, relation_kind,
+                    weight, confidence, evidence_count
+                 ) VALUES(?1, 'module:app', 'module:core', 'include', 2, 'resolved', 2)",
+                [project_id],
+            )
+            .unwrap();
+        (temporary, database, root, project_id)
+    }
+
+    fn request(protocol_version: u32) -> String {
+        json!({
+            "protocol_version": protocol_version,
+            "project_id": 999,
+            "graph_kind": "module_dependencies",
+            "root_node_ids": [],
+            "direction": "both",
+            "depth": 1,
+            "filters": {},
+            "max_nodes": 500,
+            "path_target": null,
+            "continuation": null
+        })
+        .to_string()
+    }
+
+    #[tokio::test]
+    async fn graph_reads_stdin_overwrites_project_id_and_writes_only_json() {
+        let (_temporary, database, root, project_id) = graph_database();
+        let args = vec![
+            "graph".to_string(),
+            "--root".to_string(),
+            root,
+            "--request".to_string(),
+            "-".to_string(),
+            "--db".to_string(),
+            database.display().to_string(),
+        ];
+        let mut output = Vec::new();
+        run_with_io(args, Cursor::new(request(1)), &mut output)
+            .await
+            .unwrap();
+        let response: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(response["project_id"], project_id);
+        assert_eq!(response["edges"][0]["source"], "module:app");
+    }
+
+    #[tokio::test]
+    async fn graph_propagates_protocol_validation_errors() {
+        let (_temporary, database, root, _) = graph_database();
+        let args = vec![
+            "graph".to_string(),
+            "--root".to_string(),
+            root,
+            "--request".to_string(),
+            "-".to_string(),
+            "--db".to_string(),
+            database.display().to_string(),
+        ];
+        let error = run_with_io(args, Cursor::new(request(2)), Vec::new())
+            .await
+            .unwrap_err();
+        assert!(error.contains("unsupported graph protocol version 2"));
     }
 }

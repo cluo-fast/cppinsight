@@ -693,7 +693,7 @@ pnpm --dir desktop run build
 
 Expected: layout tests, Rust suite, TypeScript compiler and Vite build pass.
 
-- [ ] **Step 6: Commit the desktop graph boundary**
+- [x] **Step 6: Commit the desktop graph boundary**
 
 ```bash
 git add desktop/src-tauri/src/index.rs desktop/src-tauri/src/commands.rs desktop/src-tauri/src/lib.rs desktop/src/types.ts desktop/src/api.ts desktop/src-tauri/tests/graph_protocol.rs
@@ -716,11 +716,11 @@ git commit -m "feat: expose graph queries and saved layouts to desktop"
 - Produces MCP tool: `cppinsight_graph` with `projectPath` and the same request properties excluding `project_id`.
 - Consumes: `GraphQueryRequest` and `query_graph` from Task 5.
 
-- [ ] **Step 1: Write failing CLI parser and MCP forwarding tests**
+- [x] **Step 1: Write failing CLI parser and MCP forwarding tests**
 
 Refactor CLI argument execution into a library-testable `run_with_io(args, stdin, stdout)` function. Assert `--request -` reads JSON from stdin, rejects wrong protocol versions, and returns parseable response JSON. In Node tests, stub the child runner and assert `cppinsight_graph` forwards `graph --root <path> --request -` with the request on stdin, clamps no values silently, and propagates structured validation errors.
 
-- [ ] **Step 2: Run transport tests to verify they fail**
+- [x] **Step 2: Run transport tests to verify they fail**
 
 Run:
 
@@ -731,11 +731,11 @@ pnpm --dir tools/mcp-server test
 
 Expected: graph command and MCP test script do not exist.
 
-- [ ] **Step 3: Implement CLI JSON transport**
+- [x] **Step 3: Implement CLI JSON transport**
 
 Add usage text and parse exactly one `--request` value. Read a file or stdin, deserialize `GraphQueryRequest`, resolve the database/project, replace `project_id`, execute the shared query, and output `serde_json::to_writer_pretty` plus one newline. Do not reproduce graph traversal in the CLI.
 
-- [ ] **Step 4: Implement MCP schema and stdin forwarding**
+- [x] **Step 4: Implement MCP schema and stdin forwarding**
 
 Add `cppinsight_graph` with enums for graph kind/direction and a maximum `maxNodes` of `500`. Convert camelCase MCP input to snake_case protocol JSON and invoke the CLI through stdin so project paths and filter content are not placed into one long command argument. Keep the existing inspect and Ask tools unchanged.
 

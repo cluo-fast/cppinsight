@@ -28,7 +28,7 @@ function resolveWorkbenchBin() {
   );
 }
 
-function runWorkbench(args, { timeoutMs = 120_000 } = {}) {
+export function runWorkbench(args, { timeoutMs = 120_000, stdin = null } = {}) {
   const bin = resolveWorkbenchBin();
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, {
@@ -68,16 +68,22 @@ function runWorkbench(args, { timeoutMs = 120_000 } = {}) {
         )
       );
     });
+    if (stdin != null) {
+      child.stdin.end(stdin);
+    }
   });
 }
 
-const server = new Server(
-  { name: "cppinsight", version: "0.1.0" },
-  { capabilities: { tools: {} } }
-);
+const GRAPH_KINDS = [
+  "module_dependencies",
+  "function_calls",
+  "class_relations",
+  "file_includes",
+  "entry_paths"
+];
 
-server.setRequestHandler(ListToolsRequestSchema, async () => ({
-  tools: [
+export function listToolDefinitions() {
+  return [
     {
       name: "cppinsight_inspect",
       description:
@@ -119,11 +125,72 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
         },
         required: ["projectPath", "question"]
       }
+    },
+    {
+      name: "cppinsight_graph",
+      description:
+        "Query a bounded, evidence-backed C/C++ relationship graph from an indexed project. Returns the versioned graph protocol JSON.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          projectPath: { type: "string", description: "Absolute path to the indexed project root" },
+          protocolVersion: { type: "number", enum: [1], default: 1 },
+          graphKind: { type: "string", enum: GRAPH_KINDS },
+          rootNodeIds: { type: "array", items: { type: "string" }, default: [] },
+          direction: { type: "string", enum: ["incoming", "outgoing", "both"], default: "both" },
+          depth: { type: "number", minimum: 0, maximum: 8, default: 2 },
+          filters: {
+            type: "object",
+            properties: {
+              moduleIds: { type: "array", items: { type: "string" }, default: [] },
+              filePaths: { type: "array", items: { type: "string" }, default: [] },
+              symbolKinds: { type: "array", items: { type: "string" }, default: [] },
+              relationKinds: { type: "array", items: { type: "string" }, default: [] },
+              confidence: {
+                type: "array",
+                items: {
+                  type: "string",
+                  enum: ["resolved", "hybrid", "heuristic", "ambiguous", "unresolved"]
+                },
+                default: []
+              },
+              search: { type: ["string", "null"], default: null }
+            }
+          },
+          maxNodes: { type: "number", minimum: 1, maximum: 500, default: 500 },
+          pathTarget: { type: ["string", "null"], default: null },
+          continuation: { type: ["string", "null"], default: null }
+        },
+        required: ["projectPath", "graphKind"]
+      }
     }
   ]
-}));
+}
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+function graphProtocolRequest(args) {
+  const filters = args.filters || {};
+  return {
+    protocol_version: args.protocolVersion ?? 1,
+    project_id: 0,
+    graph_kind: args.graphKind,
+    root_node_ids: args.rootNodeIds ?? [],
+    direction: args.direction ?? "both",
+    depth: args.depth ?? 2,
+    filters: {
+      module_ids: filters.moduleIds ?? [],
+      file_paths: filters.filePaths ?? [],
+      symbol_kinds: filters.symbolKinds ?? [],
+      relation_kinds: filters.relationKinds ?? [],
+      confidence: filters.confidence ?? [],
+      search: filters.search ?? null
+    },
+    max_nodes: args.maxNodes ?? 500,
+    path_target: args.pathTarget ?? null,
+    continuation: args.continuation ?? null
+  };
+}
+
+export async function handleToolCall(request, runner = runWorkbench) {
   const name = request.params.name;
   const args = request.params.arguments || {};
 
@@ -162,6 +229,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       };
     }
 
+    if (name === "cppinsight_graph") {
+      const projectPath = String(args.projectPath || "");
+      if (!projectPath || !args.graphKind) {
+        throw new Error("projectPath and graphKind are required");
+      }
+      const stdout = await runner(
+        ["graph", "--root", projectPath, "--request", "-"],
+        { stdin: `${JSON.stringify(graphProtocolRequest(args))}\n` }
+      );
+      return { content: [{ type: "text", text: stdout.trim() }] };
+    }
+
     throw new Error(`Unknown tool: ${name}`);
   } catch (error) {
     return {
@@ -174,7 +253,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       ]
     };
   }
-});
+}
 
-const transport = new StdioServerTransport();
-await server.connect(transport);
+export async function startServer() {
+  const server = new Server(
+    { name: "cppinsight", version: "0.1.0" },
+    { capabilities: { tools: {} } }
+  );
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: listToolDefinitions()
+  }));
+  server.setRequestHandler(CallToolRequestSchema, (request) => handleToolCall(request));
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  await startServer();
+}
