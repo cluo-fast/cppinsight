@@ -152,6 +152,8 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "requestedGraphNodeId",
   "graphRequestId",
   "graphDataVersion",
+  "summaryRequestSequenceRef",
+  "exportClientSummary(active.overview.root",
   "在函数调用图中查看",
   "graph_node_id",
   "回到关系图"

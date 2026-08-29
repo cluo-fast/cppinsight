@@ -32,6 +32,8 @@ cargo test --manifest-path src-tauri\Cargo.toml
 
 欢迎页提供“体验内置示例”，示例项目由 Tauri 后端安全写入应用缓存目录，不依赖命令行或用户源码。
 
+索引完成或恢复已有索引后，桌面端会自动生成本地接手报告；报告中的五类关系图入口可直接打开对应工作台。AI 未配置或调用失败时，报告和关系图仍可用。
+
 ## 开发模式
 
 先确保 `desktop/src-tauri/resources/cppinsight.exe` 已生成，再运行：

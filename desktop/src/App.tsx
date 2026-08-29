@@ -301,6 +301,8 @@ export default function App() {
   const retainedChatsRef = useRef<Record<string, { chats: ChatThread[]; activeChatId: string }>>(
     {}
   );
+  const summaryRequestSequenceRef = useRef(0);
+  const summaryLoadingRef = useRef(new Set<string>());
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistSkipRef = useRef(true);
 
@@ -330,6 +332,40 @@ export default function App() {
     }
     return active.chats.find((chat) => chat.id === active.activeChatId) ?? active.chats[0] ?? null;
   }, [active]);
+
+  useEffect(() => {
+    if (
+      !active ||
+      active.indexMissing ||
+      active.indexing ||
+      active.summary ||
+      summaryLoadingRef.current.has(active.id)
+    ) {
+      return;
+    }
+    const sessionId = active.id;
+    const requestSequence = ++summaryRequestSequenceRef.current;
+    summaryLoadingRef.current.add(sessionId);
+    void exportClientSummary(active.overview.root, active.overview.project_id)
+      .then((text) => {
+        if (requestSequence === summaryRequestSequenceRef.current) {
+          patchProject(sessionId, { summary: text });
+        }
+      })
+      .catch(() => {
+        // The explicit export action remains available when report generation fails.
+      })
+      .finally(() => {
+        summaryLoadingRef.current.delete(sessionId);
+      });
+  }, [
+    active?.id,
+    active?.indexMissing,
+    active?.indexing,
+    active?.overview.project_id,
+    active?.overview.root,
+    active?.summary
+  ]);
 
   const overview = active?.overview ?? null;
   const anyIndexing = sessions.some((session) => session.indexing);
@@ -533,6 +569,7 @@ export default function App() {
     provisionalId?: string,
     options?: { indexMissing?: boolean }
   ) {
+    summaryRequestSequenceRef.current += 1;
     const id = normalizeRootKey(next.root);
     const restored = await resolveChatsForRoot(id);
     setSessions((current) => {
@@ -547,6 +584,7 @@ export default function App() {
                 ...session,
                 id,
                 overview: next,
+                summary: "",
                 indexing: false,
                 indexMissing: options?.indexMissing ?? false,
                 chats: session.chats.length > 0 ? session.chats : restored.chats,
