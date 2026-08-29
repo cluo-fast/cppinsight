@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
+import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const expectedSizeClasses = new Set(["small", "medium", "large"]);
 const failures = [];
@@ -8,7 +10,8 @@ function fail(message) {
   failures.push(message);
 }
 
-const inputPath = process.argv[2] ?? "docs/benchmarks/corpus.json";
+const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const inputPath = process.argv[2] ?? path.join(scriptRoot, "docs", "benchmarks", "corpus.json");
 let manifest;
 try {
   manifest = JSON.parse(readFileSync(inputPath, "utf8"));
