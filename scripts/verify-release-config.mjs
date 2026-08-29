@@ -194,7 +194,9 @@ requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "gra
   "清除查询根",
   "清除路径目标",
   "setRootIds([requestedGraphNodeId])",
-  "setRootIds([])"
+  "setRootIds([])",
+  "按页加载",
+  "response.groups.length"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "client summary generator", [
   "## Build context",

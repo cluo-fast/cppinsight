@@ -626,9 +626,14 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           <span>{response.statistics.returned_edge_count} / {response.statistics.original_edge_count} 条关系</span>
           <span>置信度：{response.confidence.overall}</span>
           <span>循环：{response.statistics.cycle_count}</span>
+          <span>分组：{response.groups.length}</span>
           <span>关键节点：{response.statistics.central_node_ids.length}</span>
           {hiddenNodeIds.size > 0 ? <span>已收起：{hiddenNodeIds.size}</span> : null}
-          {response.truncated ? <span className="graph-truncated">已截断</span> : null}
+          {response.truncated ? (
+            <span className="graph-truncated">
+              已截断：按页加载（{response.truncation_reason || "node_limit"}）
+            </span>
+          ) : null}
         </div>
       ) : null}
 
@@ -707,8 +712,8 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
             </svg>
           )}
           {response?.truncated ? (
-            <button className="graph-more" onClick={() => void loadGraph(response.continuation)}>
-              加载下一页（{response.continuation}）
+            <button className="graph-more" disabled={!response.continuation || loading} onClick={() => response.continuation && void loadGraph(response.continuation)}>
+              加载下一页（{response.continuation || "无 continuation"}）
             </button>
           ) : null}
           {visibleNodes.length > 0 ? (
