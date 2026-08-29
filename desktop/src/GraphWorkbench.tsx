@@ -140,6 +140,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
   const consumedGraphKindRef = useRef<GraphKind | null>(null);
   const consumedGraphNodeRef = useRef<string | null>(null);
+  const graphScopeRef = useRef({ root, projectId });
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
@@ -162,6 +163,15 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   useEffect(() => {
     if (selectedId && hiddenNodeIds.has(selectedId)) setSelectedId(null);
   }, [hiddenNodeIds, selectedId]);
+
+  useEffect(() => {
+    setRootIds([]);
+    setPathTarget(null);
+    setResponse(null);
+    setSelectedId(null);
+    setPositions({});
+    setCollapsedIds(new Set());
+  }, [root, projectId]);
 
   useEffect(() => {
     if (requestedGraphKind && requestedGraphKind !== consumedGraphKindRef.current) {
@@ -355,6 +365,10 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   useEffect(() => {
+    if (graphScopeRef.current.root !== root || graphScopeRef.current.projectId !== projectId) {
+      graphScopeRef.current = { root, projectId };
+      return;
+    }
     if (
       (requestedGraphKind &&
         consumedGraphKindRef.current !== requestedGraphKind &&
