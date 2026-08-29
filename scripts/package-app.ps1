@@ -36,8 +36,8 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "pnpm install failed" }
     pnpm run verify:bundle
     if ($LASTEXITCODE -ne 0) { throw "release configuration verification failed" }
-    pnpm run build
-    if ($LASTEXITCODE -ne 0) { throw "frontend build failed" }
+    pnpm run check
+    if ($LASTEXITCODE -ne 0) { throw "frontend or Rust verification failed" }
     pnpm tauri build
     if ($LASTEXITCODE -ne 0) { throw "Tauri bundle build failed" }
 }
