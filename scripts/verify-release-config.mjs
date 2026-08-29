@@ -39,6 +39,11 @@ requireValue(
   "desktop package must provide graph snapshot regression test"
 );
 requireValue(
+  desktopPackage.scripts?.["test:report-html"] ===
+    "node --experimental-strip-types ../scripts/report-html.test.mjs",
+  "desktop package must provide HTML report security regression test"
+);
+requireValue(
   desktopPackage.scripts?.["test:benchmark-result"] ===
     "node --test ../scripts/verify-benchmark-result.test.mjs",
   "desktop package must provide benchmark result validation test"
@@ -89,6 +94,7 @@ if (existsSync(windowsWorkflowPath)) {
     "cargo test",
     "pnpm run build",
     "pnpm run test:graph-snapshot",
+    "pnpm run test:report-html",
     "pnpm run test:benchmark-result",
     "pnpm run test:benchmark-corpus",
     "pnpm tauri build",
@@ -193,6 +199,8 @@ requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph ben
 ]);
 requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot regression test");
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
+requireFile(path.join(root, "scripts", "report-html.test.mjs"), "HTML report security regression test");
+requireFile(path.join(root, "desktop", "src", "reportHtml.ts"), "HTML report renderer");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.mjs"), "benchmark result verifier");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.test.mjs"), "benchmark result verifier test");
 requireFile(path.join(root, "docs", "benchmarks", "corpus.json"), "benchmark corpus manifest");
