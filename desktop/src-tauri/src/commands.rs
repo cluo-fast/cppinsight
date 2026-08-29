@@ -232,6 +232,15 @@ fn validate_project_scope(
     Ok(())
 }
 
+fn load_project_overview_scoped(
+    connection: &Connection,
+    project_id: i64,
+    root: &str,
+) -> Result<ProjectOverview, String> {
+    validate_project_scope(connection, project_id, root)?;
+    load_project_overview(connection, project_id)
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct LoadedWorkspace {
     pub active_root_key: Option<String>,
@@ -352,7 +361,7 @@ pub fn get_project_overview(
 ) -> Result<ProjectOverview, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
     let connection = open_database_at(&db_path)?;
-    load_project_overview(&connection, project_id)
+    load_project_overview_scoped(&connection, project_id, &root)
 }
 
 /// Open an already-indexed project without rescanning. Returns `null` if no local index exists.
@@ -572,7 +581,10 @@ pub async fn load_graph_layout(
 
 #[cfg(test)]
 mod tests {
-    use super::{materialize_sample_project, validate_project_scope, IndexCancellation};
+    use super::{
+        load_project_overview_scoped, materialize_sample_project, validate_project_scope,
+        IndexCancellation,
+    };
     use std::sync::atomic::Ordering;
 
     #[test]
@@ -613,6 +625,25 @@ mod tests {
         assert!(
             validate_project_scope(&connection, 0, directory.path().to_str().unwrap()).is_err()
         );
+    }
+
+    #[test]
+    fn project_overview_loader_rejects_cross_scope() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let connection = rusqlite::Connection::open_in_memory().expect("open database");
+        crate::migrate_database(&connection).expect("migrate database");
+        connection
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES(?1, 'now', 0, 0, 0, '[]', 'heuristic', 'heuristic', 3, 'test', 1, 1)",
+                rusqlite::params![directory.path().to_string_lossy().to_string()],
+            )
+            .expect("insert project");
+
+        assert!(load_project_overview_scoped(&connection, 1, "different-root").is_err());
     }
 
     #[test]

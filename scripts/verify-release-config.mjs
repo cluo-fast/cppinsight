@@ -215,7 +215,8 @@ requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "cl
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "commands.rs"), "index cancellation command", [
   "IndexCancellation",
   "cancel_index",
-  "indexing cancelled"
+  "indexing cancelled",
+  "load_project_overview_scoped"
 ]);
 requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
   "应用版本",

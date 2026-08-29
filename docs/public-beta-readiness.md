@@ -7,7 +7,7 @@
 - [x] C++ 扫描器稳定符号键、限定名、父作用域、调用归属、类型关系和入口点。
 - [x] schema 2 兼容迁移、schema 3 图事实、完整 generation 事务回滚。
 - [x] 统一 Graph Protocol v1：五类图、方向/深度/筛选、路径、循环、中心节点、证据和分页。
-- [x] Tauri 异步 `query_graph`、布局保存/加载及稳定节点 ID 校验。
+- [x] Tauri 异步 `query_graph`、布局保存/加载及稳定节点 ID 校验；概览、问答、摘要和符号分析命令均校验项目作用域。
 - [x] 桌面 GraphWorkbench：五类图切换、搜索/筛选、缩放、拖拽、节点展开/收起、路径目标、证据面板、分页和 SVG/PNG 导出。
 - [x] Cytoscape.js 3.34.1 已锁定并由 Vite 生产构建打包；图节点颜色、路径高亮和 zoom 控件已接入实例。
 - [x] Cytoscape.js 按需动态加载，首屏主包与图渲染块拆分；加载失败时保留确定性 SVG 后备画布。
@@ -22,7 +22,7 @@
 - [x] GitHub 公开测试 Bug 表单要求版本、复现步骤和隐私确认，减少源码与凭据误上传。
 - [x] `examples/sample-cpp` 可独立 CMake 构建；本机扫描与 Workbench 五类图查询均已跑通，Windows CI 也会重复该烟测。
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
-- [x] C++ CTest、Rust 41 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
+- [x] C++ CTest、Rust 42 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] 固定数据集 SVG 结构快照回归测试（稳定性、XML 转义、路径/中心节点高亮）。
 - [x] HTML 客户摘要独立转码测试覆盖标题、正文、视图标签的 HTML 转义和脚本载荷防护。
 - [x] 桌面运行时检测回归测试覆盖浏览器预览与 Tauri IPC 桥接，避免把开发预览误报为原始 `invoke` 异常。
