@@ -302,7 +302,7 @@ export default function App() {
     {}
   );
   const summaryRequestSequenceRef = useRef(0);
-  const summaryLoadingRef = useRef(new Set<string>());
+  const summaryLoadingRef = useRef(new Map<string, number>());
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const persistSkipRef = useRef(true);
 
@@ -345,7 +345,7 @@ export default function App() {
     }
     const sessionId = active.id;
     const requestSequence = ++summaryRequestSequenceRef.current;
-    summaryLoadingRef.current.add(sessionId);
+    summaryLoadingRef.current.set(sessionId, requestSequence);
     void exportClientSummary(active.overview.root, active.overview.project_id)
       .then((text) => {
         if (requestSequence === summaryRequestSequenceRef.current) {
@@ -356,7 +356,9 @@ export default function App() {
         // The explicit export action remains available when report generation fails.
       })
       .finally(() => {
-        summaryLoadingRef.current.delete(sessionId);
+        if (summaryLoadingRef.current.get(sessionId) === requestSequence) {
+          summaryLoadingRef.current.delete(sessionId);
+        }
       });
   }, [
     active?.id,
@@ -571,6 +573,7 @@ export default function App() {
   ) {
     summaryRequestSequenceRef.current += 1;
     const id = normalizeRootKey(next.root);
+    summaryLoadingRef.current.delete(id);
     const restored = await resolveChatsForRoot(id);
     setSessions((current) => {
       const existing = current.find(
