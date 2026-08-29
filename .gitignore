@@ -1,5 +1,6 @@
 /build/
 /build-codex/
+/build-graph-data/
 /.worktrees/
 /.cppinsight/
 **/.cppinsight/
