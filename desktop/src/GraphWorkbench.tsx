@@ -146,6 +146,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const consumedGraphNodeRef = useRef<string | null>(null);
   const consumedGraphKindRequestRef = useRef<number | null>(null);
   const consumedGraphNodeRequestRef = useRef<number | null>(null);
+  const graphQuerySequenceRef = useRef(0);
   const graphScopeRef = useRef({ root, projectId });
 
   const nodes = response?.nodes ?? [];
@@ -202,6 +203,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       setRootIds([]);
       setPathTarget(null);
     }
+    graphQuerySequenceRef.current += 1;
     setResponse(null);
     setSelectedId(null);
     setPositions({});
@@ -359,6 +361,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   async function loadGraph(nextContinuation: string | null = null) {
+    const querySequence = ++graphQuerySequenceRef.current;
     setLoading(true);
     setError(null);
     onStatus?.("正在查询关系图…");
@@ -378,6 +381,9 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           pathTarget
         )
       );
+      if (querySequence !== graphQuerySequenceRef.current) {
+        return;
+      }
       const merged = nextContinuation && response ? mergeGraphResponses(response, next) : next;
       const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
       const viewLabel = [
@@ -402,14 +408,22 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       } catch {
         // Layout storage is best-effort; graph data remains usable when upgrading an old index.
       }
+      if (querySequence !== graphQuerySequenceRef.current) {
+        return;
+      }
       layoutFor(merged.nodes, saved?.positions);
       onStatus?.(null);
     } catch (err) {
+      if (querySequence !== graphQuerySequenceRef.current) {
+        return;
+      }
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
       onStatus?.(null);
     } finally {
-      setLoading(false);
+      if (querySequence === graphQuerySequenceRef.current) {
+        setLoading(false);
+      }
     }
   }
 
