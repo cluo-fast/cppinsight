@@ -324,6 +324,10 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     setGraphKind(nextKind);
     setRootIds([]);
     setPathTarget(null);
+    setResponse(null);
+    setSelectedId(null);
+    setPositions({});
+    setCollapsedIds(new Set());
   }
 
   async function loadGraph(nextContinuation: string | null = null) {
