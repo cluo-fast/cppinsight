@@ -399,7 +399,15 @@ pub async fn ask_project(
 ) -> Result<AskResponse, String> {
     migrate_legacy_api_keys(&app)?;
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
+    let validation_db_path = db_path.clone();
     let settings_path = settings_db_path_from_app(&app)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&validation_db_path)?;
+        validate_project_scope(&connection, project_id, &expected_root)
+    })
+    .await
+    .map_err(|error| format!("ask scope validation join error: {error}"))??;
     ask_project_at_with_settings(project_id, &question, &db_path, Some(&settings_path)).await
 }
 
@@ -410,8 +418,10 @@ pub async fn export_client_summary(
     project_id: i64,
 ) -> Result<String, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, project_id, &expected_root)?;
         build_client_summary(&connection, project_id)
     })
     .await
@@ -427,8 +437,10 @@ pub async fn inspect_symbol(
     depth: Option<u32>,
 ) -> Result<InspectSymbolResponse, String> {
     let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    let expected_root = root.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, project_id, &expected_root)?;
         inspect_symbol_at(&connection, project_id, &query, depth)
     })
     .await
@@ -491,7 +503,7 @@ pub async fn load_graph_layout(
 
 #[cfg(test)]
 mod tests {
-    use super::materialize_sample_project;
+    use super::{materialize_sample_project, validate_project_scope};
 
     #[test]
     fn bundled_sample_project_is_complete_and_idempotent() {
@@ -506,6 +518,30 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(custom).expect("read custom"),
             "custom\n"
+        );
+    }
+
+    #[test]
+    fn project_scope_validation_rejects_cross_root_and_invalid_ids() {
+        let directory = tempfile::tempdir().expect("temp directory");
+        let connection = rusqlite::Connection::open_in_memory().expect("open database");
+        crate::migrate_database(&connection).expect("migrate database");
+        connection
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES(?1, 'now', 0, 0, 0, '[]', 'heuristic', 'heuristic', 3, 'test', 1, 1)",
+                rusqlite::params![directory.path().to_string_lossy().to_string()],
+            )
+            .expect("insert project");
+
+        validate_project_scope(&connection, 1, &directory.path().to_string_lossy())
+            .expect("matching root should pass");
+        assert!(validate_project_scope(&connection, 1, "different-root").is_err());
+        assert!(
+            validate_project_scope(&connection, 0, directory.path().to_str().unwrap()).is_err()
         );
     }
 }
