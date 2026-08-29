@@ -63,6 +63,7 @@ jobs:
         run: |
           pnpm run verify:bundle
           pnpm run build
+          pnpm run test:graph-snapshot
 
       - name: Test Rust backend
         working-directory: desktop/src-tauri

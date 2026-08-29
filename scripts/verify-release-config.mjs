@@ -78,6 +78,7 @@ if (existsSync(windowsWorkflowPath)) {
     "ctest",
     "cargo test",
     "pnpm run build",
+    "pnpm run test:graph-snapshot",
     "pnpm tauri build",
     "Upload Windows installers",
     "Smoke test MSI and NSIS installers",
