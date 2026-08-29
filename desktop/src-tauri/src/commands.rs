@@ -18,17 +18,63 @@ use crate::{
     index_db_path_for_root, index_scan_json_at, inspect_symbol_at, load_project_overview,
     migrate_legacy_api_keys, migrate_legacy_project_if_needed, open_database_at,
     overview_from_scan, project_index_db_path, public_openai_settings, read_openai_settings,
-    run_scan, run_scan_with_progress, set_openai_settings_at, settings_db_path_from_app,
-    try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
-    InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
+    run_scan, set_openai_settings_at, settings_db_path_from_app, try_load_indexed_project_at,
+    write_index, AskResponse, IndexProgressEvent, InspectSymbolResponse, ProjectOverview,
+    PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
 };
 use rusqlite::Connection;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use tauri::{AppHandle, Manager};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::{AppHandle, Manager, State};
 
 const SAMPLE_PROJECT_MARKER: &str = ".cppinsight-sample-v1";
+
+#[derive(Default)]
+pub struct IndexCancellation {
+    active: Mutex<Option<Arc<AtomicBool>>>,
+}
+
+impl IndexCancellation {
+    fn begin(&self) -> Result<Arc<AtomicBool>, String> {
+        let mut active = self
+            .active
+            .lock()
+            .map_err(|_| "index cancellation state is unavailable".to_string())?;
+        if active.is_some() {
+            return Err("an index operation is already running".to_string());
+        }
+        let token = Arc::new(AtomicBool::new(false));
+        *active = Some(token.clone());
+        Ok(token)
+    }
+
+    fn cancel(&self) -> bool {
+        let Ok(active) = self.active.lock() else {
+            return false;
+        };
+        if let Some(token) = active.as_ref() {
+            token.store(true, Ordering::Relaxed);
+            true
+        } else {
+            false
+        }
+    }
+
+    fn finish(&self, token: &Arc<AtomicBool>) {
+        if let Ok(mut active) = self.active.lock() {
+            if active
+                .as_ref()
+                .map(|current| Arc::ptr_eq(current, token))
+                .unwrap_or(false)
+            {
+                *active = None;
+            }
+        }
+    }
+}
 const SAMPLE_PROJECT_FILES: &[(&str, &str)] = &[
     (
         "CMakeLists.txt",
@@ -210,12 +256,25 @@ pub async fn scan_project(path: String) -> Result<ScanResult, String> {
 }
 
 #[tauri::command]
-pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOverview, String> {
+pub async fn index_project(
+    app: AppHandle,
+    path: String,
+    cancellation: State<'_, IndexCancellation>,
+) -> Result<ProjectOverview, String> {
+    let token = cancellation.begin()?;
+    let token_for_task = token.clone();
     let app_for_task = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let scan = run_scan_with_progress(&path, |event| {
-            emit_index_progress(&app_for_task, &event);
-        })?;
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let scan = crate::run_scan_with_progress_cancelable(
+            &path,
+            |event| {
+                emit_index_progress(&app_for_task, &event);
+            },
+            &token_for_task,
+        )?;
+        if token_for_task.load(Ordering::Relaxed) {
+            return Err("indexing cancelled".to_string());
+        }
 
         emit_index_progress(
             &app_for_task,
@@ -234,6 +293,9 @@ pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOvervi
         // Best-effort migration; ignore soft failures and continue with fresh write.
         if let Err(error) = migrate_legacy_project_if_needed(&app_for_task, &root, &db_path) {
             eprintln!("warning: legacy index migration skipped: {error}");
+        }
+        if token_for_task.load(Ordering::Relaxed) {
+            return Err("indexing cancelled".to_string());
         }
 
         let mut connection = open_database_at(&db_path)?;
@@ -255,7 +317,14 @@ pub async fn index_project(app: AppHandle, path: String) -> Result<ProjectOvervi
         Ok(overview)
     })
     .await
-    .map_err(|error| format!("index task join error: {error}"))?
+    .map_err(|error| format!("index task join error: {error}"));
+    cancellation.finish(&token);
+    result?
+}
+
+#[tauri::command]
+pub fn cancel_index(cancellation: State<'_, IndexCancellation>) -> bool {
+    cancellation.cancel()
 }
 
 #[tauri::command]
@@ -503,7 +572,8 @@ pub async fn load_graph_layout(
 
 #[cfg(test)]
 mod tests {
-    use super::{materialize_sample_project, validate_project_scope};
+    use super::{materialize_sample_project, validate_project_scope, IndexCancellation};
+    use std::sync::atomic::Ordering;
 
     #[test]
     fn bundled_sample_project_is_complete_and_idempotent() {
@@ -543,5 +613,20 @@ mod tests {
         assert!(
             validate_project_scope(&connection, 0, directory.path().to_str().unwrap()).is_err()
         );
+    }
+
+    #[test]
+    fn index_cancellation_registry_targets_only_the_active_job() {
+        let registry = IndexCancellation::default();
+        assert!(!registry.cancel());
+        let token = registry.begin().expect("first job should register");
+        assert!(
+            registry.begin().is_err(),
+            "second job must not replace token"
+        );
+        assert!(registry.cancel());
+        assert!(token.load(Ordering::Relaxed));
+        registry.finish(&token);
+        assert!(!registry.cancel());
     }
 }

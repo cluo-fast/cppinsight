@@ -20,6 +20,7 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{Emitter, Manager};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -1261,8 +1262,20 @@ fn summarize_cli_stderr(stderr_lines: &[String]) -> String {
 
 pub fn run_scan_with_progress(
     path: &str,
-    mut on_progress: impl FnMut(IndexProgressEvent),
+    on_progress: impl FnMut(IndexProgressEvent),
 ) -> Result<ScanResult, String> {
+    let cancellation = AtomicBool::new(false);
+    run_scan_with_progress_cancelable(path, on_progress, &cancellation)
+}
+
+pub fn run_scan_with_progress_cancelable(
+    path: &str,
+    mut on_progress: impl FnMut(IndexProgressEvent),
+    cancellation: &AtomicBool,
+) -> Result<ScanResult, String> {
+    if cancellation.load(Ordering::Relaxed) {
+        return Err("indexing cancelled".to_string());
+    }
     let cli = find_cppinsight_binary()?;
     let stamp = format!("{}-{}", std::process::id(), Utc::now().timestamp_millis());
     let json_path = std::env::temp_dir().join(format!("cppinsight-scan-{stamp}.json"));
@@ -1310,12 +1323,25 @@ pub fn run_scan_with_progress(
                 });
             }
             stderr_lines.push(line);
+            if cancellation.load(Ordering::Relaxed) {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = fs::remove_file(&json_path);
+                let _ = fs::remove_file(&overview_path);
+                return Err("indexing cancelled".to_string());
+            }
         }
     }
 
     let status = child
         .wait()
         .map_err(|error| format!("failed to wait for cppinsight CLI: {error}"))?;
+
+    if cancellation.load(Ordering::Relaxed) {
+        let _ = fs::remove_file(&json_path);
+        let _ = fs::remove_file(&overview_path);
+        return Err("indexing cancelled".to_string());
+    }
 
     if !status.success() {
         let _ = fs::remove_file(&json_path);
@@ -3612,11 +3638,13 @@ pub(crate) fn sql_error(error: rusqlite::Error) -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .manage(commands::IndexCancellation::default())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             commands::prepare_sample_project,
             commands::scan_project,
             commands::index_project,
+            commands::cancel_index,
             commands::index_scan_json,
             commands::get_project_overview,
             commands::load_indexed_project,
@@ -3642,11 +3670,12 @@ pub fn run() {
 mod tests {
     use super::{
         parse_scan_progress_line, public_openai_settings, read_openai_settings_with_backend,
-        score_context, tokenize, OpenAiSettings, SearchContext,
+        run_scan_with_progress_cancelable, score_context, tokenize, OpenAiSettings, SearchContext,
     };
     use crate::secrets::SecretBackend;
     use std::collections::HashMap;
     use std::collections::{BTreeMap, HashSet};
+    use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Mutex;
 
     #[derive(Default)]
@@ -3833,6 +3862,14 @@ mod tests {
         assert_eq!(parsed.files_analyzed, 800);
         assert_eq!(parsed.files_reused, 100);
         assert_eq!(parsed.current_file, "src/foo.cpp");
+    }
+
+    #[test]
+    fn cancelled_scan_short_circuits_before_starting_cli() {
+        let cancellation = AtomicBool::new(true);
+        let result = run_scan_with_progress_cancelable("missing-project", |_| {}, &cancellation);
+        assert_eq!(result.unwrap_err(), "indexing cancelled");
+        assert!(cancellation.load(Ordering::Relaxed));
     }
 
     #[test]

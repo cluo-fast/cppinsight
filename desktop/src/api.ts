@@ -55,6 +55,10 @@ export function indexProject(path: string): Promise<ProjectOverview> {
   return invoke<ProjectOverview>("index_project", { path });
 }
 
+export function cancelIndex(): Promise<boolean> {
+  return invoke<boolean>("cancel_index");
+}
+
 /** Load existing project-local index; `null` if not indexed yet. */
 export function loadIndexedProject(path: string): Promise<ProjectOverview | null> {
   return invoke<ProjectOverview | null>("load_indexed_project", { path });

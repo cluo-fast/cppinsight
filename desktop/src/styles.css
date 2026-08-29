@@ -399,6 +399,17 @@ button:disabled {
   color: var(--danger);
 }
 
+.status-with-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.status-with-action button {
+  flex: 0 0 auto;
+}
+
 .welcome h1 {
   margin: 0 0 12px;
   font-size: 28px;

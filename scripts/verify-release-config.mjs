@@ -44,6 +44,11 @@ requireValue(
   "desktop package must provide HTML report security regression test"
 );
 requireValue(
+  desktopPackage.scripts?.["test:runtime-mode"] ===
+    "node --experimental-strip-types ../scripts/runtime-mode.test.mjs",
+  "desktop package must provide runtime mode regression test"
+);
+requireValue(
   desktopPackage.scripts?.["test:artifact-manifest"] ===
     "node --test ../scripts/verify-sha256-manifest.test.mjs",
   "desktop package must provide artifact manifest verification test"
@@ -106,6 +111,7 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run build",
     "pnpm run test:graph-snapshot",
     "pnpm run test:report-html",
+    "pnpm run test:runtime-mode",
     "pnpm run test:artifact-manifest",
     "pnpm run test:benchmark-result",
     "pnpm run test:benchmark-corpus",
@@ -177,6 +183,7 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "requestedGraphNodeId",
   "graphRequestId",
   "graphDataVersion",
+  "取消索引",
   "summaryRequestSequenceRef",
   "exportClientSummary(active.overview.root",
   "正在生成本地接手报告",
@@ -205,6 +212,11 @@ requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "cl
   "Graph findings are heuristic",
   "stable_id: row.get(0)?"
 ]);
+requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "commands.rs"), "index cancellation command", [
+  "IndexCancellation",
+  "cancel_index",
+  "indexing cancelled"
+]);
 requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
   "应用版本",
   "复现步骤",
@@ -222,6 +234,8 @@ requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapsh
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
 requireFile(path.join(root, "scripts", "report-html.test.mjs"), "HTML report security regression test");
 requireFile(path.join(root, "desktop", "src", "reportHtml.ts"), "HTML report renderer");
+requireFile(path.join(root, "scripts", "runtime-mode.test.mjs"), "runtime mode regression test");
+requireFile(path.join(root, "desktop", "src", "runtime.ts"), "runtime mode helper");
 requireFile(path.join(root, "scripts", "verify-sha256-manifest.mjs"), "artifact hash manifest verifier");
 requireFile(path.join(root, "scripts", "verify-sha256-manifest.test.mjs"), "artifact hash manifest verifier test");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.mjs"), "benchmark result verifier");

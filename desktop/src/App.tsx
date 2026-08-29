@@ -3,6 +3,7 @@ import { getVersion } from "@tauri-apps/api/app";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   askProject,
+  cancelIndex,
   chooseProjectDirectory,
   exportDiagnostics,
   exportClientSummary,
@@ -20,6 +21,7 @@ import {
 } from "./api";
 import GraphWorkbench from "./GraphWorkbench";
 import { summaryAsHtml } from "./reportHtml";
+import { isTauriRuntime } from "./runtime";
 import type {
   AskResponse,
   ChatMessage,
@@ -428,6 +430,11 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
+      if (!isTauriRuntime()) {
+        setStatus("浏览器预览模式：请在 CppInsight AI 桌面应用中打开项目。");
+        setWorkspaceReady(true);
+        return;
+      }
       try {
         const loaded = await loadWorkspace();
         if (cancelled) {
@@ -639,11 +646,36 @@ export default function App() {
       await upsertSessionOverview(next, provisionalId, { indexMissing: false });
       setGraphDataVersion((current) => current + 1);
       setStatus(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("indexing cancelled")) {
+        setSessions((current) =>
+          current.map((session) =>
+            session.id === provisionalId ? { ...session, indexing: false } : session
+          )
+        );
+        setStatus("已取消索引；原有索引保持不变。");
+        return;
+      }
+      throw err;
     } finally {
       if (unlisten) {
         unlisten();
       }
       indexingInFlightRef.current = false;
+    }
+  }
+
+  async function cancelIndexing() {
+    try {
+      setStatus("正在取消索引…");
+      const cancelled = await cancelIndex();
+      if (!cancelled) {
+        setStatus(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus(null);
     }
   }
 
@@ -1151,7 +1183,16 @@ export default function App() {
       ) : null}
 
       {error ? <div className="banner error">{error}</div> : null}
-      {status ? <div className="banner">{status}</div> : null}
+      {status ? (
+        <div className="banner status-with-action">
+          <span>{status}</span>
+          {anyIndexing ? (
+            <button className="secondary" onClick={() => void cancelIndexing()}>
+              取消索引
+            </button>
+          ) : null}
+        </div>
+      ) : null}
       {active?.indexMissing ? (
         <div className="banner error">
           本地索引不可用。可点「重新索引」重建，或关闭该项目。
