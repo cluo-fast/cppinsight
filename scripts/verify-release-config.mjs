@@ -172,6 +172,8 @@ requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "gra
   "setRootIds([])"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "client summary generator", [
+  "## Build context",
+  "## First 1-3 days",
   "## Suggested reading order",
   "Graph findings are heuristic",
   "stable_id: row.get(0)?"

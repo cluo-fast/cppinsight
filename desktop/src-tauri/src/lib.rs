@@ -3135,6 +3135,50 @@ fn graph_edge_evidence(response: &GraphQueryResponse, edge: &GraphEdge) -> Strin
         .join(", ")
 }
 
+fn detect_build_context(root: &str) -> (Vec<&'static str>, bool) {
+    let root = Path::new(root);
+    let has_file = |name: &str| root.join(name).is_file();
+    let mut systems = Vec::new();
+
+    if has_file("CMakeLists.txt") || has_file("CMakePresets.json") {
+        systems.push("CMake");
+    }
+    if has_file("Makefile") || has_file("makefile") || has_file("GNUmakefile") {
+        systems.push("Make");
+    }
+    if has_file("meson.build") {
+        systems.push("Meson");
+    }
+    if has_file("WORKSPACE") || has_file("WORKSPACE.bazel") || has_file("BUILD.bazel") {
+        systems.push("Bazel");
+    }
+    if let Ok(entries) = fs::read_dir(root) {
+        if entries.filter_map(Result::ok).any(|entry| {
+            entry
+                .path()
+                .extension()
+                .and_then(|extension| extension.to_str())
+                .is_some_and(|extension| {
+                    extension.eq_ignore_ascii_case("sln")
+                        || extension.eq_ignore_ascii_case("vcxproj")
+                })
+        }) {
+            systems.push("Visual Studio");
+        }
+    }
+
+    let compile_commands = [
+        "compile_commands.json",
+        "build/compile_commands.json",
+        "build-codex/compile_commands.json",
+        "out/compile_commands.json",
+    ]
+    .iter()
+    .any(|candidate| root.join(candidate).is_file());
+
+    (systems, compile_commands)
+}
+
 pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<String, String> {
     let overview = load_project_overview(connection, project_id)?;
     let mut output = String::new();
@@ -3161,6 +3205,26 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             hotspot.path, hotspot.code_lines, hotspot.symbol_count
         ));
     }
+    output.push('\n');
+
+    let (build_systems, has_compile_commands) = detect_build_context(&overview.root);
+    output.push_str("## Build context\n");
+    if build_systems.is_empty() {
+        output.push_str("- Build system markers: not detected at the project root.\n");
+    } else {
+        output.push_str(&format!(
+            "- Detected build systems: {}.\n",
+            build_systems.join(", ")
+        ));
+    }
+    output.push_str(&format!(
+        "- compile_commands.json: {}.\n",
+        if has_compile_commands {
+            "found; relationship confidence can be improved with hybrid analysis"
+        } else {
+            "not found; current relationships may be heuristic and incomplete"
+        }
+    ));
     output.push('\n');
 
     output.push_str("## Suggested reading order\n");
@@ -3192,6 +3256,7 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             .then(left.file.cmp(&right.file))
             .then(left.line.cmp(&right.line))
     });
+    let has_entry_symbols = !entry_symbols.is_empty();
     let mut suggestion_count = 0usize;
     for symbol in entry_symbols.into_iter().take(4) {
         output.push_str(&format!(
@@ -3213,6 +3278,23 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
         );
     }
     output.push('\n');
+
+    output.push_str("## First 1-3 days\n");
+    if !has_entry_symbols {
+        output.push_str(
+            "- Start with the largest hot files, then use the function graph to identify a likely execution path.\n",
+        );
+    } else {
+        output.push_str(
+            "- Confirm the detected entry symbol and follow its outgoing path in the entry-path graph.\n",
+        );
+    }
+    output.push_str(
+        "- Review the module dependency and file-include graphs before changing public interfaces.\n",
+    );
+    output.push_str(
+        "- Validate unresolved or heuristic relations against the cited source lines; do not treat them as compiler-verified facts.\n\n",
+    );
 
     let graph_request = |graph_kind: GraphKind, depth: u32| GraphQueryRequest {
         protocol_version: crate::graph::GRAPH_PROTOCOL_VERSION,
@@ -3943,6 +4025,33 @@ data: [DONE]
         assert!(summary.contains("module:app` → `module:core"));
         assert!(summary.contains("heuristic"));
         assert!(summary.contains("Function call graph"));
+    }
+
+    #[test]
+    fn client_summary_reports_build_context_and_onboarding_steps() {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("CMakeLists.txt"), "project(sample)\n").unwrap();
+        std::fs::write(directory.path().join("compile_commands.json"), "[]\n").unwrap();
+
+        let connection = open_memory_db();
+        connection
+            .execute(
+                "INSERT INTO projects(
+                    root, indexed_at, file_count, symbol_count, include_count,
+                    diagnostics_json, mode, confidence, index_schema_version,
+                    generator_version, index_generation, index_complete
+                 ) VALUES(?1, 'now', 0, 0, 0, '[]', 'hybrid', 'hybrid', 3, 'test', 1, 1)",
+                rusqlite::params![directory.path().to_string_lossy().to_string()],
+            )
+            .unwrap();
+        let project_id = connection.last_insert_rowid();
+
+        let summary = super::build_client_summary(&connection, project_id).unwrap();
+        assert!(summary.contains("## Build context"));
+        assert!(summary.contains("Detected build systems: CMake"));
+        assert!(summary.contains("compile_commands.json: found"));
+        assert!(summary.contains("## First 1-3 days"));
+        assert!(summary.contains("Review the module dependency and file-include graphs"));
     }
 
     #[test]
