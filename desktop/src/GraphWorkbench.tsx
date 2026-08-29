@@ -382,7 +382,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     void loadGraph();
     // The explicit controls below are the intended query boundaries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root, projectId, graphKind, rootIds, requestedGraphKind, requestedGraphNodeId]);
+  }, [root, projectId, graphKind, rootIds, pathTarget, requestedGraphKind, requestedGraphNodeId]);
 
   function svgPoint(event: React.PointerEvent<SVGSVGElement>): GraphPosition {
     const svg = canvasRef.current;
@@ -706,7 +706,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
               </div>
               {rootIds.length > 0 || pathTarget ? (
                 <p className="muted graph-query-hint">
-                  根：{rootIds.join(", ") || "自动"} · 目标：{pathTarget || "未设置"}（点击“应用筛选”执行）
+                  根：{rootIds.join(", ") || "自动"} · 目标：{pathTarget || "未设置"}（根和目标会自动刷新；搜索/筛选请点“应用筛选”）
                 </p>
               ) : null}
               <dl className="graph-details">
