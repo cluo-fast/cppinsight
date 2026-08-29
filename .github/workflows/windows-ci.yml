@@ -72,7 +72,7 @@ jobs:
         working-directory: tools/mcp-server
         shell: pwsh
         run: |
-          npm install --ignore-scripts
+          npm ci --ignore-scripts
           npm test
 
       - name: Reject signing from untrusted refs

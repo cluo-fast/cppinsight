@@ -13,6 +13,7 @@ test("cppinsight_graph advertises bounded protocol fields", () => {
     "entry_paths"
   ]);
   assert.equal(graph.inputSchema.properties.maxNodes.maximum, 500);
+  assert.ok(graph.inputSchema.properties.filters.properties.confidence.items.enum.includes("precise"));
 });
 
 test("cppinsight_graph forwards request JSON through stdin without clamping", async () => {
