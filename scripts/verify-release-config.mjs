@@ -38,6 +38,11 @@ requireValue(
     "node --experimental-strip-types ../scripts/graph-snapshot.test.mjs",
   "desktop package must provide graph snapshot regression test"
 );
+requireValue(
+  desktopPackage.scripts?.["test:benchmark-result"] ===
+    "node --test ../scripts/verify-benchmark-result.test.mjs",
+  "desktop package must provide benchmark result validation test"
+);
 requireValue(config.build?.beforeDevCommand === "pnpm run dev", "beforeDevCommand must use pnpm");
 requireValue(config.build?.beforeBuildCommand === "pnpm run build", "beforeBuildCommand must use pnpm");
 requireValue(
@@ -79,6 +84,7 @@ if (existsSync(windowsWorkflowPath)) {
     "cargo test",
     "pnpm run build",
     "pnpm run test:graph-snapshot",
+    "pnpm run test:benchmark-result",
     "pnpm tauri build",
     "Verify bundled sample scan and graph query",
     "examples/sample-cpp",
@@ -140,6 +146,8 @@ requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph ben
 ]);
 requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot regression test");
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
+requireFile(path.join(root, "scripts", "verify-benchmark-result.mjs"), "benchmark result verifier");
+requireFile(path.join(root, "scripts", "verify-benchmark-result.test.mjs"), "benchmark result verifier test");
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));

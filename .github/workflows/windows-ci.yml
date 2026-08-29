@@ -64,6 +64,7 @@ jobs:
           pnpm run verify:bundle
           pnpm run build
           pnpm run test:graph-snapshot
+          pnpm run test:benchmark-result
 
       - name: Test Rust backend
         working-directory: desktop/src-tauri
@@ -148,6 +149,17 @@ jobs:
           if ($response.protocol_version -ne 1 -or $response.statistics.returned_node_count -lt 1) {
             throw "Bundled sample graph response was empty or invalid"
           }
+
+      - name: Verify bundled sample graph benchmark
+        shell: pwsh
+        run: |
+          $benchmarkPath = Join-Path $env:RUNNER_TEMP "cppinsight-sample-benchmark.json"
+          ./scripts/benchmark-graph.ps1 `
+            -ProjectRoot examples/sample-cpp `
+            -WorkbenchPath desktop/src-tauri/target/release/cppinsight-workbench.exe `
+            -Iterations 3 `
+            -OutputPath $benchmarkPath
+          node scripts/verify-benchmark-result.mjs $benchmarkPath
 
       - name: Verify Authenticode signatures
         if: github.event_name == 'workflow_dispatch' && inputs.sign && github.ref == 'refs/heads/main'
