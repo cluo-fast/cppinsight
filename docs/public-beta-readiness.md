@@ -8,7 +8,7 @@
 - [x] schema 2 兼容迁移、schema 3 图事实、完整 generation 事务回滚。
 - [x] 统一 Graph Protocol v1：五类图、方向/深度/筛选、路径、循环、中心节点、证据和分页。
 - [x] Tauri 异步 `query_graph`、布局保存/加载及稳定节点 ID 校验。
-- [x] 桌面 GraphWorkbench：五类图切换、搜索/筛选、缩放、拖拽、路径目标、证据面板、分页和 SVG/PNG 导出。
+- [x] 桌面 GraphWorkbench：五类图切换、搜索/筛选、缩放、拖拽、节点展开/收起、路径目标、证据面板、分页和 SVG/PNG 导出。
 - [x] Cytoscape.js 3.34.1 已锁定并由 Vite 生产构建打包；图节点颜色、路径高亮和 zoom 控件已接入实例。
 - [x] 接手报告加入模块、包含、类型和入口图洞察；支持 Markdown/HTML 摘要下载，AI 关闭时本地报告和图查询仍可用。
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
