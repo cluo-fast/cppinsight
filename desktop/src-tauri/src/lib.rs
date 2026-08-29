@@ -3166,6 +3166,57 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     }
     output.push('\n');
 
+    output.push_str("## Suggested reading order\n");
+    const ENTRY_NAMES: [&str; 7] = [
+        "main",
+        "wmain",
+        "WinMain",
+        "wWinMain",
+        "DllMain",
+        "_tmain",
+        "_tWinMain",
+    ];
+    let mut entry_symbols: Vec<_> = overview
+        .symbols
+        .iter()
+        .filter(|symbol| symbol.kind == "function" && ENTRY_NAMES.contains(&symbol.name.as_str()))
+        .collect();
+    entry_symbols.sort_by(|left, right| {
+        ENTRY_NAMES
+            .iter()
+            .position(|name| *name == left.name)
+            .unwrap_or(usize::MAX)
+            .cmp(
+                &ENTRY_NAMES
+                    .iter()
+                    .position(|name| *name == right.name)
+                    .unwrap_or(usize::MAX),
+            )
+            .then(left.file.cmp(&right.file))
+            .then(left.line.cmp(&right.line))
+    });
+    let mut suggestion_count = 0usize;
+    for symbol in entry_symbols.into_iter().take(4) {
+        output.push_str(&format!(
+            "- Entry symbol `{}` at `{}:{}` (confidence `{}`)\n",
+            symbol.name, symbol.file, symbol.line, symbol.confidence
+        ));
+        suggestion_count += 1;
+    }
+    for hotspot in overview.hotspots.iter().take(4) {
+        output.push_str(&format!(
+            "- Hot file `{}` next ({} code lines, {} symbols)\n",
+            hotspot.path, hotspot.code_lines, hotspot.symbol_count
+        ));
+        suggestion_count += 1;
+    }
+    if suggestion_count == 0 {
+        output.push_str(
+            "- No conventional entry symbol was found; start with the largest source files, then inspect callers in the function graph.\n",
+        );
+    }
+    output.push('\n');
+
     let graph_request = |graph_kind: GraphKind, depth: u32| GraphQueryRequest {
         protocol_version: crate::graph::GRAPH_PROTOCOL_VERSION,
         project_id,
@@ -3890,6 +3941,7 @@ data: [DONE]
             .unwrap();
 
         let summary = super::build_client_summary(&connection, project_id).unwrap();
+        assert!(summary.contains("## Suggested reading order"));
         assert!(summary.contains("## Relationship graph insights"));
         assert!(summary.contains("module:app` → `module:core"));
         assert!(summary.contains("heuristic"));

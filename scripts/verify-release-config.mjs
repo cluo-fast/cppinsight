@@ -150,6 +150,10 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "getVersion",
   "未找到 compile_commands.json"
 ]);
+requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "client summary generator", [
+  "## Suggested reading order",
+  "Graph findings are heuristic"
+]);
 requireTextMarkers(path.join(root, ".github", "ISSUE_TEMPLATE", "bug_report.yml"), "public beta bug form", [
   "应用版本",
   "复现步骤",
