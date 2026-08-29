@@ -32,27 +32,45 @@ const SAMPLE_PROJECT_MARKER: &str = ".cppinsight-sample-v1";
 const SAMPLE_PROJECT_FILES: &[(&str, &str)] = &[
     (
         "CMakeLists.txt",
-        "cmake_minimum_required(VERSION 3.16)\nproject(cppinsight_sample LANGUAGES CXX)\nset(CMAKE_CXX_STANDARD 17)\nadd_executable(cppinsight_sample src/main.cpp src/engine.cpp src/worker.cpp)\ntarget_include_directories(cppinsight_sample PRIVATE include)\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/CMakeLists.txt"
+        )),
     ),
     (
         "include/sample/engine.hpp",
-        "#pragma once\n#include <string>\n\nnamespace sample {\nclass Engine {\npublic:\n    explicit Engine(std::string name);\n    std::string run(int jobs) const;\nprivate:\n    std::string name_;\n};\n}\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/include/sample/engine.hpp"
+        )),
     ),
     (
         "src/engine.cpp",
-        "#include \"sample/engine.hpp\"\n#include \"sample/worker.hpp\"\n\nnamespace sample {\nEngine::Engine(std::string name) : name_(std::move(name)) {}\nstd::string Engine::run(int jobs) const {\n    Worker worker(name_);\n    return worker.process(jobs);\n}\n}\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/src/engine.cpp"
+        )),
     ),
     (
         "include/sample/worker.hpp",
-        "#pragma once\n#include <string>\n\nnamespace sample {\nclass Worker {\npublic:\n    explicit Worker(std::string owner);\n    std::string process(int jobs) const;\nprivate:\n    std::string owner_;\n};\n}\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/include/sample/worker.hpp"
+        )),
     ),
     (
         "src/worker.cpp",
-        "#include \"sample/worker.hpp\"\n#include <sstream>\n\nnamespace sample {\nWorker::Worker(std::string owner) : owner_(std::move(owner)) {}\nstd::string Worker::process(int jobs) const {\n    std::ostringstream output;\n    output << owner_ << \" processed \" << jobs << \" jobs\";\n    return output.str();\n}\n}\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/src/worker.cpp"
+        )),
     ),
     (
         "src/main.cpp",
-        "#include \"sample/engine.hpp\"\n#include <iostream>\n\nint main() {\n    sample::Engine engine(\"demo\");\n    std::cout << engine.run(3) << '\\n';\n    return 0;\n}\n",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/src/main.cpp"
+        )),
     ),
 ];
 

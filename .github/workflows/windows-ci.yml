@@ -131,6 +131,24 @@ jobs:
             pnpm tauri build
           }
 
+      - name: Verify bundled sample scan and graph query
+        shell: pwsh
+        run: |
+          $scanPath = Join-Path $env:RUNNER_TEMP "cppinsight-sample-scan.json"
+          & build-release/Release/cppinsight.exe scan examples/sample-cpp --json $scanPath --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Bundled sample scan failed" }
+          & desktop/src-tauri/target/release/cppinsight-workbench.exe index $scanPath --db examples/sample-cpp/.cppinsight/index.sqlite
+          if ($LASTEXITCODE -ne 0) { throw "Bundled sample index write failed" }
+          $request = @'
+          {"protocol_version":1,"project_id":0,"graph_kind":"function_calls","root_node_ids":[],"direction":"both","depth":2,"filters":{},"max_nodes":500,"path_target":null,"continuation":null}
+          '@
+          $responseText = $request | & desktop/src-tauri/target/release/cppinsight-workbench.exe graph --root examples/sample-cpp --request -
+          if ($LASTEXITCODE -ne 0) { throw "Bundled sample graph query failed" }
+          $response = $responseText | ConvertFrom-Json
+          if ($response.protocol_version -ne 1 -or $response.statistics.returned_node_count -lt 1) {
+            throw "Bundled sample graph response was empty or invalid"
+          }
+
       - name: Verify Authenticode signatures
         if: github.event_name == 'workflow_dispatch' && inputs.sign && github.ref == 'refs/heads/main'
         shell: pwsh
