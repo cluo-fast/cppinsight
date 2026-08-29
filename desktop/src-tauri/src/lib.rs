@@ -3178,6 +3178,21 @@ fn graph_node_display(response: &GraphQueryResponse, id: &str) -> String {
         .unwrap_or_else(|| id.to_string())
 }
 
+fn unique_graph_node_displays(response: &GraphQueryResponse, ids: &[&str], limit: usize) -> String {
+    let mut labels = Vec::new();
+    let mut seen = HashSet::new();
+    for id in ids {
+        let label = graph_node_display(response, id);
+        if seen.insert(label.clone()) {
+            labels.push(label);
+        }
+        if labels.len() >= limit {
+            break;
+        }
+    }
+    labels.join(", ")
+}
+
 fn project_display_name(root: &str) -> String {
     let trimmed = root.trim_end_matches(['/', '\\']);
     trimmed
@@ -3442,12 +3457,16 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             if entries.statistics.central_node_ids.is_empty() {
                 "未计算".to_string()
             } else {
-                entries.statistics.central_node_ids
-                    [..entries.statistics.central_node_ids.len().min(5)]
-                    .iter()
-                    .map(|id| graph_node_display(&entries, id))
-                    .collect::<Vec<_>>()
-                    .join(", ")
+                unique_graph_node_displays(
+                    &entries,
+                    &entries
+                        .statistics
+                        .central_node_ids
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>(),
+                    5,
+                )
             }
         ));
     }
@@ -4138,6 +4157,60 @@ data: [DONE]
         std::fs::remove_file(directory.path().join("compile_commands.json")).unwrap();
         let hybrid_summary = super::build_client_summary(&connection, project_id).unwrap();
         assert!(hybrid_summary.contains("compile_commands.json: found"));
+    }
+
+    #[test]
+    fn graph_summary_deduplicates_repeated_display_names() {
+        let mut response =
+            crate::graph::GraphQueryResponse::empty(1, crate::graph::GraphKind::EntryPaths);
+        response.nodes = vec![
+            crate::graph::GraphNode {
+                id: "sym:0000000000000001".to_string(),
+                kind: crate::graph::GraphNodeKind::Function,
+                label: "run".to_string(),
+                qualified_name: "sample::Engine::run".to_string(),
+                file: "src/engine.cpp".to_string(),
+                line: 4,
+                module_id: "module:src".to_string(),
+                confidence: crate::graph::GraphConfidence::Heuristic,
+                ambiguous: false,
+                metadata: BTreeMap::new(),
+            },
+            crate::graph::GraphNode {
+                id: "sym:0000000000000002".to_string(),
+                kind: crate::graph::GraphNodeKind::Function,
+                label: "run".to_string(),
+                qualified_name: "sample::Engine::run".to_string(),
+                file: "include/sample/engine.hpp".to_string(),
+                line: 11,
+                module_id: "module:include".to_string(),
+                confidence: crate::graph::GraphConfidence::Heuristic,
+                ambiguous: false,
+                metadata: BTreeMap::new(),
+            },
+            crate::graph::GraphNode {
+                id: "sym:0000000000000003".to_string(),
+                kind: crate::graph::GraphNodeKind::Function,
+                label: "main".to_string(),
+                qualified_name: "main".to_string(),
+                file: "src/main.cpp".to_string(),
+                line: 5,
+                module_id: "module:src".to_string(),
+                confidence: crate::graph::GraphConfidence::Heuristic,
+                ambiguous: false,
+                metadata: BTreeMap::new(),
+            },
+        ];
+        let labels = super::unique_graph_node_displays(
+            &response,
+            &[
+                "sym:0000000000000001",
+                "sym:0000000000000002",
+                "sym:0000000000000003",
+            ],
+            5,
+        );
+        assert_eq!(labels, "sample::Engine::run, main");
     }
 
     #[test]
