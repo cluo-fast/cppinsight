@@ -65,6 +65,7 @@ jobs:
           pnpm run build
           pnpm run test:graph-snapshot
           pnpm run test:report-html
+          pnpm run test:artifact-manifest
           pnpm run test:benchmark-result
           pnpm run test:benchmark-corpus
 
@@ -199,6 +200,7 @@ jobs:
             "$hash  $relative"
           }
           $checksums | Set-Content "$bundleRoot/SHA256SUMS.txt"
+          node scripts/verify-sha256-manifest.mjs "$bundleRoot/SHA256SUMS.txt"
 
       - name: Smoke test MSI and NSIS installers
         shell: pwsh

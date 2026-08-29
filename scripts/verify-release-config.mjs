@@ -44,6 +44,11 @@ requireValue(
   "desktop package must provide HTML report security regression test"
 );
 requireValue(
+  desktopPackage.scripts?.["test:artifact-manifest"] ===
+    "node --test ../scripts/verify-sha256-manifest.test.mjs",
+  "desktop package must provide artifact manifest verification test"
+);
+requireValue(
   desktopPackage.scripts?.["test:benchmark-result"] ===
     "node --test ../scripts/verify-benchmark-result.test.mjs",
   "desktop package must provide benchmark result validation test"
@@ -82,6 +87,11 @@ for (const relative of config.bundle?.resources ?? []) {
 }
 
 requireFile(path.join(root, "scripts", "package-app.ps1"), "package script");
+requireTextMarkers(path.join(root, "scripts", "package-app.ps1"), "package script", [
+  "Get-FileHash",
+  "SHA256SUMS.txt",
+  "verify-sha256-manifest.mjs"
+]);
 requireFile(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script");
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
 
@@ -95,6 +105,7 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run build",
     "pnpm run test:graph-snapshot",
     "pnpm run test:report-html",
+    "pnpm run test:artifact-manifest",
     "pnpm run test:benchmark-result",
     "pnpm run test:benchmark-corpus",
     "pnpm tauri build",
@@ -105,6 +116,7 @@ if (existsSync(windowsWorkflowPath)) {
     "Smoke test MSI and NSIS installers",
     "windows-installer-smoke.ps1",
     "Get-FileHash",
+    "verify-sha256-manifest.mjs",
     "Get-AuthenticodeSignature"
   ]) {
     requireValue(workflow.includes(marker), `Windows CI workflow is missing: ${marker}`);
@@ -201,6 +213,8 @@ requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapsh
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
 requireFile(path.join(root, "scripts", "report-html.test.mjs"), "HTML report security regression test");
 requireFile(path.join(root, "desktop", "src", "reportHtml.ts"), "HTML report renderer");
+requireFile(path.join(root, "scripts", "verify-sha256-manifest.mjs"), "artifact hash manifest verifier");
+requireFile(path.join(root, "scripts", "verify-sha256-manifest.test.mjs"), "artifact hash manifest verifier test");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.mjs"), "benchmark result verifier");
 requireFile(path.join(root, "scripts", "verify-benchmark-result.test.mjs"), "benchmark result verifier test");
 requireFile(path.join(root, "docs", "benchmarks", "corpus.json"), "benchmark corpus manifest");
