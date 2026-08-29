@@ -7,7 +7,10 @@ pub mod workspace;
 
 pub use index::write_index;
 
-use crate::graph::{query_graph, GraphDirection, GraphFilters, GraphKind, GraphQueryRequest};
+use crate::graph::{
+    query_graph, GraphDirection, GraphEdge, GraphFilters, GraphKind, GraphQueryRequest,
+    GraphQueryResponse,
+};
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -3124,6 +3127,17 @@ pub fn try_load_indexed_project_at(
     Ok(None)
 }
 
+fn graph_edge_evidence(response: &GraphQueryResponse, edge: &GraphEdge) -> String {
+    response
+        .evidence
+        .iter()
+        .filter(|item| edge.evidence_ids.iter().any(|id| id == &item.id))
+        .take(3)
+        .map(|item| format!("{}:{}", item.file, item.line))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<String, String> {
     let overview = load_project_overview(connection, project_id)?;
     let mut output = String::new();
@@ -3173,9 +3187,41 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
             modules.statistics.cycle_count
         ));
         for edge in modules.edges.iter().take(8) {
+            let evidence = graph_edge_evidence(&modules, edge);
             output.push_str(&format!(
-                "- `{}` → `{}` ({}, weight {}, confidence {})\n",
-                edge.source, edge.target, edge.kind, edge.weight, edge.confidence
+                "- `{}` → `{}` ({}, weight {}, confidence {}; evidence {})\n",
+                edge.source,
+                edge.target,
+                edge.kind,
+                edge.weight,
+                edge.confidence,
+                if evidence.is_empty() {
+                    "未定位"
+                } else {
+                    &evidence
+                }
+            ));
+        }
+    }
+    if let Ok(calls) = query_graph(connection, graph_request(GraphKind::FunctionCalls, 2)) {
+        output.push_str(&format!(
+            "- Function call graph: {} nodes, {} relations, {} unresolved edges.\n",
+            calls.statistics.original_node_count,
+            calls.statistics.original_edge_count,
+            calls.statistics.unresolved_edge_count
+        ));
+        for edge in calls.edges.iter().take(8) {
+            let evidence = graph_edge_evidence(&calls, edge);
+            output.push_str(&format!(
+                "- Call `{}` → `{}` (confidence {}; evidence {})\n",
+                edge.source,
+                edge.target,
+                edge.confidence,
+                if evidence.is_empty() {
+                    "未定位"
+                } else {
+                    &evidence
+                }
             ));
         }
     }
@@ -3847,6 +3893,7 @@ data: [DONE]
         assert!(summary.contains("## Relationship graph insights"));
         assert!(summary.contains("module:app` → `module:core"));
         assert!(summary.contains("heuristic"));
+        assert!(summary.contains("Function call graph"));
     }
 
     #[test]

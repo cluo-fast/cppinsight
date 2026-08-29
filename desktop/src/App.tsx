@@ -22,6 +22,7 @@ import type {
   AskResponse,
   ChatMessage,
   ComposerMode,
+  GraphKind,
   IndexProgressEvent,
   InspectSymbolResponse,
   PersistedChat,
@@ -263,6 +264,7 @@ export default function App() {
   const [diagnosticPreview, setDiagnosticPreview] = useState<string | null>(null);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
+  const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
   const [graphSnapshot, setGraphSnapshot] = useState<{ svg: string; view: string } | null>(null);
 
   useEffect(() => {
@@ -283,6 +285,11 @@ export default function App() {
     () => sessions.find((session) => session.id === activeRoot) ?? null,
     [sessions, activeRoot]
   );
+
+  function openReportGraph(kind: GraphKind) {
+    setRequestedGraphKind(kind);
+    setShowGraph(true);
+  }
 
   const activeChat = useMemo(() => {
     if (!active) {
@@ -1209,6 +1216,7 @@ export default function App() {
                     onInspectSymbol={(query) => void sendInspect(query)}
                     onAskAi={(question) => void sendQuestion(question)}
                     onGraphSnapshot={setGraphSnapshot}
+                    requestedGraphKind={requestedGraphKind}
                   />
                 ) : null}
 
@@ -1445,11 +1453,16 @@ export default function App() {
                   <section className="panel">
                     <div className="panel-heading-row">
                       <h2>客户摘要</h2>
-                      <button className="secondary" onClick={() => setShowGraph(true)}>
-                        在关系图中查看
-                      </button>
                     </div>
                     <pre>{active.summary}</pre>
+                    <div className="summary-graph-links">
+                      <span className="muted">按报告洞察打开关系图：</span>
+                      <button className="secondary" onClick={() => openReportGraph("module_dependencies")}>模块依赖</button>
+                      <button className="secondary" onClick={() => openReportGraph("function_calls")}>函数调用</button>
+                      <button className="secondary" onClick={() => openReportGraph("class_relations")}>类关系</button>
+                      <button className="secondary" onClick={() => openReportGraph("file_includes")}>文件包含</button>
+                      <button className="secondary" onClick={() => openReportGraph("entry_paths")}>入口路径</button>
+                    </div>
                   </section>
                 ) : null}
               </div>

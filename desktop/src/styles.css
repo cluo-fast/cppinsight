@@ -327,6 +327,14 @@ button:disabled {
   gap: 12px;
 }
 
+.summary-graph-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
 .graph-inspector-actions {
   display: flex;
   gap: 8px;

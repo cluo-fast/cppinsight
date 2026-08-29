@@ -49,6 +49,7 @@ type Props = {
   onInspectSymbol?: (query: string) => void;
   onAskAi?: (question: string) => void;
   onGraphSnapshot?: (snapshot: { svg: string; view: string }) => void;
+  requestedGraphKind?: GraphKind | null;
 };
 
 function createRequest(
@@ -112,7 +113,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -136,6 +137,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const positionsRef = useRef<Record<string, GraphPosition>>({});
   positionsRef.current = positions;
   const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
+  const consumedGraphKindRef = useRef<GraphKind | null>(null);
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
@@ -158,6 +160,13 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   useEffect(() => {
     if (selectedId && hiddenNodeIds.has(selectedId)) setSelectedId(null);
   }, [hiddenNodeIds, selectedId]);
+
+  useEffect(() => {
+    if (requestedGraphKind && requestedGraphKind !== consumedGraphKindRef.current) {
+      consumedGraphKindRef.current = requestedGraphKind;
+      setGraphKind(requestedGraphKind);
+    }
+  }, [requestedGraphKind]);
 
   useEffect(() => {
     if (!cytoscapeContainerRef.current || nodes.length === 0) {
