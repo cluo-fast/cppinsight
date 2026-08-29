@@ -18,6 +18,18 @@ std::string basenameTarget(const std::string& target) {
     return target.substr(slash + 1);
 }
 
+std::string projectDisplayName(const std::filesystem::path& root) {
+    std::string value = root.generic_string();
+    while (!value.empty() && (value.back() == '/' || value.back() == '\\')) {
+        value.pop_back();
+    }
+    const std::size_t slash = value.find_last_of("/\\");
+    if (slash == std::string::npos || slash + 1 >= value.size()) {
+        return value.empty() ? "project" : value;
+    }
+    return value.substr(slash + 1);
+}
+
 } // namespace
 
 bool OverviewWriter::isEntryPointName(const std::string& name) {
@@ -315,7 +327,7 @@ std::string OverviewWriter::buildClientBrief(const ScanResult& result) const {
     const OverviewData overview = build(result);
     std::ostringstream output;
     output << "# CppInsight Client Brief\n\n";
-    output << "Project: " << result.rootPath.string() << "\n\n";
+    output << "Project: " << projectDisplayName(result.rootPath) << "\n\n";
     output << "## Scale\n";
     output << "- Indexed C/C++ files: " << result.files.size() << "\n";
     output << "- Code lines: " << result.stats.lines.code << "\n";

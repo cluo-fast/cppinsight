@@ -3150,6 +3150,15 @@ fn graph_node_display(response: &GraphQueryResponse, id: &str) -> String {
         .unwrap_or_else(|| id.to_string())
 }
 
+fn project_display_name(root: &str) -> String {
+    let trimmed = root.trim_end_matches(['/', '\\']);
+    trimmed
+        .rsplit(['/', '\\'])
+        .find(|part| !part.is_empty())
+        .unwrap_or("project")
+        .to_string()
+}
+
 fn detect_build_context(root: &str) -> (Vec<&'static str>, bool) {
     let root = Path::new(root);
     let has_file = |name: &str| root.join(name).is_file();
@@ -3198,7 +3207,10 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     let overview = load_project_overview(connection, project_id)?;
     let mut output = String::new();
     output.push_str("# CppInsight Client Brief\n\n");
-    output.push_str(&format!("Project: {}\n\n", overview.root));
+    output.push_str(&format!(
+        "Project: {}\n\n",
+        project_display_name(&overview.root)
+    ));
     output.push_str("## Scale\n");
     output.push_str(&format!("- Indexed C/C++ files: {}\n", overview.file_count));
     output.push_str(&format!("- Code lines: {}\n", overview.stats.lines.code));
@@ -4065,6 +4077,11 @@ data: [DONE]
         let project_id = connection.last_insert_rowid();
 
         let summary = super::build_client_summary(&connection, project_id).unwrap();
+        assert!(summary.contains(&format!(
+            "Project: {}",
+            directory.path().file_name().unwrap().to_string_lossy()
+        )));
+        assert!(!summary.contains(&directory.path().to_string_lossy().to_string()));
         assert!(summary.contains("## Build context"));
         assert!(summary.contains("Detected build systems: CMake"));
         assert!(summary.contains("compile_commands.json: found"));
