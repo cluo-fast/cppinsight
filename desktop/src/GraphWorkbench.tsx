@@ -52,6 +52,7 @@ type Props = {
   requestedGraphKind?: GraphKind | null;
   requestedGraphNodeId?: string | null;
   graphRequestId?: number;
+  graphDataVersion?: number;
 };
 
 function createRequest(
@@ -115,7 +116,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind, requestedGraphNodeId, graphRequestId = 0 }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind, requestedGraphNodeId, graphRequestId = 0, graphDataVersion = 0 }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -168,17 +169,22 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [hiddenNodeIds, selectedId]);
 
   useEffect(() => {
-    consumedGraphKindRef.current = null;
-    consumedGraphNodeRef.current = null;
-    consumedGraphKindRequestRef.current = null;
-    consumedGraphNodeRequestRef.current = null;
-    setRootIds([]);
-    setPathTarget(null);
+    const scopeChanged = graphScopeRef.current.root !== root || graphScopeRef.current.projectId !== projectId;
+    if (scopeChanged) {
+      // A navigation request from the previous project must not be replayed
+      // against the new index. Keep the current view kind, but drop its scope.
+      consumedGraphKindRef.current = requestedGraphKind ?? graphKind;
+      consumedGraphNodeRef.current = requestedGraphNodeId ?? null;
+      consumedGraphKindRequestRef.current = graphRequestId;
+      consumedGraphNodeRequestRef.current = graphRequestId;
+      setRootIds([]);
+      setPathTarget(null);
+    }
     setResponse(null);
     setSelectedId(null);
     setPositions({});
     setCollapsedIds(new Set());
-  }, [root, projectId]);
+  }, [root, projectId, graphDataVersion, requestedGraphKind, requestedGraphNodeId, graphRequestId, graphKind]);
 
   useEffect(() => {
     const isNewRequest = graphRequestId !== consumedGraphKindRequestRef.current;
@@ -403,7 +409,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     void loadGraph();
     // The explicit controls below are the intended query boundaries.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [root, projectId, graphKind, rootIds, pathTarget, requestedGraphKind, requestedGraphNodeId]);
+  }, [root, projectId, graphKind, rootIds, pathTarget, requestedGraphKind, requestedGraphNodeId, graphDataVersion]);
 
   function svgPoint(event: React.PointerEvent<SVGSVGElement>): GraphPosition {
     const svg = canvasRef.current;

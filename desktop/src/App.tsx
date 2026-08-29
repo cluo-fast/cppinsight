@@ -279,6 +279,7 @@ export default function App() {
   const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
   const [requestedGraphNodeId, setRequestedGraphNodeId] = useState<string | null>(null);
   const [graphRequestId, setGraphRequestId] = useState(0);
+  const [graphDataVersion, setGraphDataVersion] = useState(0);
   const [graphSnapshot, setGraphSnapshot] = useState<{ svg: string; view: string } | null>(null);
 
   useEffect(() => {
@@ -590,6 +591,7 @@ export default function App() {
       });
       const next = await indexProject(path);
       await upsertSessionOverview(next, provisionalId, { indexMissing: false });
+      setGraphDataVersion((current) => current + 1);
       setStatus(null);
     } finally {
       if (unlisten) {
@@ -1271,6 +1273,7 @@ export default function App() {
                     requestedGraphKind={requestedGraphKind}
                     requestedGraphNodeId={requestedGraphNodeId}
                     graphRequestId={graphRequestId}
+                    graphDataVersion={graphDataVersion}
                   />
                 ) : null}
 
