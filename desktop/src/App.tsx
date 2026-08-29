@@ -278,6 +278,7 @@ export default function App() {
   const [showGraph, setShowGraph] = useState(false);
   const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
   const [requestedGraphNodeId, setRequestedGraphNodeId] = useState<string | null>(null);
+  const [graphRequestId, setGraphRequestId] = useState(0);
   const [graphSnapshot, setGraphSnapshot] = useState<{ svg: string; view: string } | null>(null);
 
   useEffect(() => {
@@ -308,6 +309,7 @@ export default function App() {
   );
 
   function openReportGraph(kind: GraphKind) {
+    setGraphRequestId((current) => current + 1);
     setRequestedGraphKind(kind);
     setRequestedGraphNodeId(null);
     setShowGraph(true);
@@ -315,6 +317,7 @@ export default function App() {
 
   function openSymbolGraph(stableId: string | undefined) {
     if (!stableId) return;
+    setGraphRequestId((current) => current + 1);
     setRequestedGraphKind("function_calls");
     setRequestedGraphNodeId(stableId);
     setShowGraph(true);
@@ -1267,6 +1270,7 @@ export default function App() {
                     onGraphSnapshot={setGraphSnapshot}
                     requestedGraphKind={requestedGraphKind}
                     requestedGraphNodeId={requestedGraphNodeId}
+                    graphRequestId={graphRequestId}
                   />
                 ) : null}
 

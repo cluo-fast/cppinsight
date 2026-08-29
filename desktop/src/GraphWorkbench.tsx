@@ -51,6 +51,7 @@ type Props = {
   onGraphSnapshot?: (snapshot: { svg: string; view: string }) => void;
   requestedGraphKind?: GraphKind | null;
   requestedGraphNodeId?: string | null;
+  graphRequestId?: number;
 };
 
 function createRequest(
@@ -114,7 +115,7 @@ function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryRespo
   };
 }
 
-export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind, requestedGraphNodeId }: Props) {
+export default function GraphWorkbench({ root, projectId, onStatus, onInspectSymbol, onAskAi, onGraphSnapshot, requestedGraphKind, requestedGraphNodeId, graphRequestId = 0 }: Props) {
   const [graphKind, setGraphKind] = useState<GraphKind>("module_dependencies");
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
@@ -140,6 +141,8 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [cytoscapeReady] = useState(() => typeof cytoscape === "function");
   const consumedGraphKindRef = useRef<GraphKind | null>(null);
   const consumedGraphNodeRef = useRef<string | null>(null);
+  const consumedGraphKindRequestRef = useRef<number | null>(null);
+  const consumedGraphNodeRequestRef = useRef<number | null>(null);
   const graphScopeRef = useRef({ root, projectId });
 
   const nodes = response?.nodes ?? [];
@@ -165,6 +168,10 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [hiddenNodeIds, selectedId]);
 
   useEffect(() => {
+    consumedGraphKindRef.current = null;
+    consumedGraphNodeRef.current = null;
+    consumedGraphKindRequestRef.current = null;
+    consumedGraphNodeRequestRef.current = null;
     setRootIds([]);
     setPathTarget(null);
     setResponse(null);
@@ -174,26 +181,30 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [root, projectId]);
 
   useEffect(() => {
-    if (requestedGraphKind && requestedGraphKind !== consumedGraphKindRef.current) {
+    const isNewRequest = graphRequestId !== consumedGraphKindRequestRef.current;
+    consumedGraphKindRequestRef.current = graphRequestId;
+    if (requestedGraphKind && (isNewRequest || requestedGraphKind !== consumedGraphKindRef.current)) {
       consumedGraphKindRef.current = requestedGraphKind;
       setGraphKind(requestedGraphKind);
     }
-  }, [requestedGraphKind]);
+  }, [requestedGraphKind, graphRequestId]);
 
   useEffect(() => {
+    const isNewRequest = graphRequestId !== consumedGraphNodeRequestRef.current;
+    consumedGraphNodeRequestRef.current = graphRequestId;
     if (!requestedGraphNodeId) {
       consumedGraphNodeRef.current = null;
       if (rootIds.length > 0) setRootIds([]);
       setPathTarget(null);
       return;
     }
-    if (requestedGraphNodeId !== consumedGraphNodeRef.current) {
+    if (isNewRequest || requestedGraphNodeId !== consumedGraphNodeRef.current) {
       consumedGraphNodeRef.current = requestedGraphNodeId;
       setGraphKind("function_calls");
       setRootIds([requestedGraphNodeId]);
       setPathTarget(null);
     }
-  }, [requestedGraphNodeId]);
+  }, [requestedGraphNodeId, graphRequestId]);
 
   useEffect(() => {
     if (!cytoscapeContainerRef.current || nodes.length === 0) {
