@@ -49,6 +49,7 @@ std::filesystem::path makeFixtureRoot() {
         "\n"
         "int main() {\n"
         "    app::Runner runner;\n"
+        "    Widget widget(1);\n"
         "    runner.run();\n"
         "}\n");
 
@@ -183,6 +184,10 @@ void testScannerFindsProjectInventory() {
     require(hasSymbol(result, "Widget", "struct"), "scanner should extract struct symbol");
     require(hasSymbol(result, "main", "function"), "scanner should extract function symbol");
     require(hasCall(result, "helper"), "scanner should extract simple call clue");
+    for (const cppinsight::CallInfo& call : result.calls) {
+        require(!call.callerQualifiedName.empty(), "call clues should belong to a function body");
+    }
+    require(!hasCall(result, "widget"), "local variable construction should not be a call clue");
 
     std::filesystem::remove_all(root);
 }

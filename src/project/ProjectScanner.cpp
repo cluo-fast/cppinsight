@@ -667,9 +667,21 @@ void extractCalls(
     const std::string& callerQualifiedName,
     const std::string& callerStableKey,
     std::vector<CallInfo>& calls) {
+    // Calls outside a function body cannot be attributed safely. In
+    // particular, declarations in headers and namespace-scope prototypes
+    // otherwise look like call expressions to the lexical scanner. Keep an
+    // inline function-body line as a fallback for pathological signatures;
+    // the index resolver will only persist it when it can recover an owner.
+    const bool hasInlineBody = code.find('{') != std::string::npos;
+    if (callerQualifiedName.empty() && !hasInlineBody) {
+        return;
+    }
     static const std::set<std::string> ignoredNames = {
         "if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "decltype",
         "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast"
+    };
+    static const std::set<std::string> expressionPrefixNames = {
+        "case", "co_await", "co_return", "delete", "new", "return", "throw"
     };
 
     // Manual scan: std::regex on huge office macros hits error_complexity under MSVC.
@@ -722,12 +734,38 @@ void extractCalls(
             continue;
         }
 
-        const std::string name = code.substr(index, qualifiedEnd - index);
+        const std::size_t nameStart = index;
+        const std::string name = code.substr(nameStart, qualifiedEnd - nameStart);
         const std::size_t lastScope = name.rfind("::");
         const std::string leafName = lastScope == std::string::npos ? name : name.substr(lastScope + 2);
         index = qualifiedEnd - 1;
         if (leafName == functionSymbolOnLine || contains(ignoredNames, leafName)) {
             continue;
+        }
+        if (lastScope == std::string::npos) {
+            std::size_t previous = nameStart;
+            while (previous > 0 && std::isspace(static_cast<unsigned char>(code[previous - 1])) != 0) {
+                --previous;
+            }
+            if (previous > 0 && code[previous - 1] == ':' &&
+                (previous < 2 || code[previous - 2] != ':')) {
+                // Constructor member initializers (`: member_(value)`) are
+                // not calls to the member field.
+                continue;
+            }
+            if (previous > 0 && isIdentifierPart(static_cast<unsigned char>(code[previous - 1]))) {
+                std::size_t prefixStart = previous - 1;
+                while (prefixStart > 0 &&
+                       isIdentifierPart(static_cast<unsigned char>(code[prefixStart - 1]))) {
+                    --prefixStart;
+                }
+                const std::string prefix = code.substr(prefixStart, previous - prefixStart);
+                if (!contains(expressionPrefixNames, prefix)) {
+                    // `Type value(args)` is a local construction, not a call
+                    // to `value`; qualified/member calls are handled above.
+                    continue;
+                }
+            }
         }
         if (!emittedOnLine.insert(name).second) {
             continue;
