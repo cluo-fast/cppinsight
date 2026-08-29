@@ -68,6 +68,13 @@ jobs:
         working-directory: desktop/src-tauri
         run: cargo test
 
+      - name: Test MCP transport
+        working-directory: tools/mcp-server
+        shell: pwsh
+        run: |
+          npm install --ignore-scripts
+          npm test
+
       - name: Reject signing from untrusted refs
         if: github.event_name == 'workflow_dispatch' && inputs.sign && github.ref != 'refs/heads/main'
         shell: pwsh

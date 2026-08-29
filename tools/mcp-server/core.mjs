@@ -72,7 +72,7 @@ export function listToolDefinitions() {
           filePaths: { type: "array", items: { type: "string" }, default: [] },
           symbolKinds: { type: "array", items: { type: "string" }, default: [] },
           relationKinds: { type: "array", items: { type: "string" }, default: [] },
-          confidence: { type: "array", items: { type: "string", enum: ["resolved", "hybrid", "heuristic", "ambiguous", "unresolved"] }, default: [] },
+          confidence: { type: "array", items: { type: "string", enum: ["resolved", "precise", "hybrid", "heuristic", "ambiguous", "unresolved"] }, default: [] },
           search: { type: ["string", "null"], default: null }
         } },
         maxNodes: { type: "number", minimum: 1, maximum: 500, default: 500 },

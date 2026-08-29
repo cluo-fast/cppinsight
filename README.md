@@ -78,7 +78,7 @@ cargo build --release --manifest-path desktop\src-tauri\Cargo.toml --bin cppinsi
 .\desktop\src-tauri\target\release\cppinsight-workbench.exe ask --root D:\code\project "入口在哪里？"
 ```
 
-MCP 服务位于 `tools/mcp-server`，提供 `cppinsight_inspect` 与 `cppinsight_ask`。配置示例见 [tools/mcp-server/README.md](tools/mcp-server/README.md)。
+MCP 服务位于 `tools/mcp-server`，提供 `cppinsight_inspect`、`cppinsight_ask` 与 `cppinsight_graph`。配置示例见 [tools/mcp-server/README.md](tools/mcp-server/README.md)。
 
 ## 桌面开发、验证与发布
 
