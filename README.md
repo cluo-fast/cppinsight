@@ -17,15 +17,16 @@ CppInsight AI 是面向陌生、遗留或缺少文档的 C/C++ 项目的本地�
 - CLI、workbench CLI 和 stdio MCP 服务；
 - Windows 打包基础、严格 CSP、操作系统凭据库和脱敏诊断导出。
 
-首发前仍必须完成的核心能力：
+关系图基础现在已包括统一 Graph Protocol v1、五类关系图工作台、可追溯证据、路径/循环/中心节点分析、布局保存和接手报告融合。协议、CLI/MCP 传输和图基准说明分别见 [Graph Protocol v1](docs/graph-protocol-v1.md)、[MCP 服务](tools/mcp-server/README.md) 和 [图查询基准](docs/benchmarks/graph-baseline.md)。
 
-- 模块依赖图；
-- 函数调用图；
-- 类继承/组合/依赖图；
-- 文件包含图；
-- 入口执行路径图。
+公开测试前仍必须完成的发布门槛：
 
-这五类关系图会使用统一、版本化的图查询模型和 Cytoscape.js 工作台，支持筛选、搜索、聚合、渐进展开、路径高亮和节点上限保护。在这些功能及 Windows CI 实机结果完成前，不应把当前分支描述为公开测试版。
+- Windows runner 原生安装包、端到端安装验证、校验和与 Authenticode 签名；
+- 目标环境中安装 Cytoscape.js 后的五类图交互与导出实测；
+- MCP SDK 依赖可获取后的 Node 传输测试；
+- 真实基准项目的延迟、内存和准确率记录。
+
+GraphWorkbench 使用统一、版本化的图查询模型，目标渲染引擎为 Cytoscape.js，并在未安装依赖的源码开发环境提供确定性后备画布；支持筛选、搜索、渐进展开、路径高亮、证据检查和节点上限保护。在上述发布门槛和 Windows CI 实机结果完成前，不应把当前分支描述为公开测试版。
 
 ## Windows 桌面使用
 
@@ -94,6 +95,8 @@ pnpm run check
 ```
 
 安装包签名、校验和、CI 与回滚步骤见 [Windows 发布指南](docs/releasing-windows.md)。产品架构和首发关系图验收标准见 [公开测试版设计](docs/superpowers/specs/2026-08-27-public-beta-code-graph-design.md)。
+
+公开测试准备状态见 [公开测试准备清单](docs/public-beta-readiness.md)。
 
 ## 反馈材料
 

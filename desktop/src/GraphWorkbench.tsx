@@ -45,8 +45,11 @@ function createRequest(
   direction: GraphDirection,
   depth: number,
   search: string,
+  confidence: GraphConfidence | "all",
+  relationFilter: string,
   continuation: string | null,
-  roots: string[] = []
+  roots: string[] = [],
+  pathTarget: string | null = null
 ): GraphQueryRequest {
   return {
     protocol_version: 1,
@@ -59,12 +62,14 @@ function createRequest(
       module_ids: [],
       file_paths: [],
       symbol_kinds: [],
-      relation_kinds: [],
-      confidence: [] as GraphConfidence[],
+      relation_kinds: relationFilter.trim()
+        ? relationFilter.split(",").map((item) => item.trim()).filter(Boolean)
+        : [],
+      confidence: confidence === "all" ? [] : [confidence],
       search: search.trim() || null
     },
     max_nodes: 500,
-    path_target: null,
+    path_target: pathTarget,
     continuation
   };
 }
@@ -112,6 +117,11 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   const [direction, setDirection] = useState<GraphDirection>("both");
   const [depth, setDepth] = useState(2);
   const [search, setSearch] = useState("");
+  const [confidence, setConfidence] = useState<GraphConfidence | "all">("all");
+  const [relationFilter, setRelationFilter] = useState("");
+  const [rootIds, setRootIds] = useState<string[]>([]);
+  const [pathTarget, setPathTarget] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
   const [response, setResponse] = useState<GraphQueryResponse | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Record<string, GraphPosition>>({});
@@ -119,6 +129,8 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const canvasRef = useRef<SVGSVGElement | null>(null);
+  const cytoscapeContainerRef = useRef<HTMLDivElement | null>(null);
+  const [cytoscapeFactory, setCytoscapeFactory] = useState<((options: any) => any) | null>(null);
 
   const nodes = response?.nodes ?? [];
   const edges = response?.edges ?? [];
@@ -131,6 +143,87 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
     () => new Set(response?.statistics.central_node_ids ?? []),
     [response]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    // Vite keeps this optional import external so source-only checkouts can still use the
+    // deterministic SVG renderer. Release installs include Cytoscape.js and use the adapter.
+    const packageName = "cytoscape";
+    void import(/* @vite-ignore */ packageName)
+      .then((module) => {
+        if (!cancelled) {
+          setCytoscapeFactory((module as any).default ?? module);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setCytoscapeFactory(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!cytoscapeFactory || !cytoscapeContainerRef.current || nodes.length === 0) {
+      return undefined;
+    }
+    const nodeElements = nodes.map((node) => ({
+      data: { id: node.id, label: shortLabel(node) },
+      position: positions[node.id] ?? { x: 80, y: 80 }
+    }));
+    const edgeElements = edges.map((edge) => ({
+      data: { id: edge.id, source: edge.source, target: edge.target, label: edge.kind }
+    }));
+    const cy = cytoscapeFactory({
+      container: cytoscapeContainerRef.current,
+      elements: { nodes: nodeElements, edges: edgeElements },
+      style: [
+        {
+          selector: "node",
+          style: {
+            label: "data(label)",
+            "background-color": "#54a7ff",
+            color: "#e8eef5",
+            "font-size": 11,
+            "text-valign": "bottom",
+            "text-margin-y": 8,
+            "border-width": 1,
+            "border-color": "#dbeafe"
+          }
+        },
+        {
+          selector: "edge",
+          style: {
+            width: 2,
+            "line-color": "#7890a8",
+            "target-arrow-color": "#7890a8",
+            "target-arrow-shape": "triangle",
+            "curve-style": "bezier"
+          }
+        },
+        {
+          selector: ".path",
+          style: { "border-width": 3, "border-color": "#fff3bf", "line-color": "#ffd166" }
+        }
+      ],
+      layout: { name: "preset", fit: true, padding: 40 }
+    });
+    cy.on("tap", "node", (event: any) => setSelectedId(event.target.id()));
+    cy.nodes().forEach((node: any) => {
+      if (pathNodes.has(node.id())) node.addClass("path");
+    });
+    cy.on("dragfree", "node", () => {
+      const next: Record<string, GraphPosition> = {};
+      cy.nodes().forEach((node: any) => {
+        const position = node.position();
+        next[node.id()] = { x: position.x, y: position.y };
+      });
+      setPositions(next);
+    });
+    return () => cy.destroy();
+  }, [cytoscapeFactory, nodes, edges, positions, pathNodes]);
 
   function layoutFor(nodesToLayout: GraphNode[], saved?: Record<string, GraphPosition>) {
     const next: Record<string, GraphPosition> = {};
@@ -147,13 +240,24 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
     try {
       const next = await queryGraph(
         root,
-        createRequest(projectId, graphKind, direction, depth, search, nextContinuation)
+        createRequest(
+          projectId,
+          graphKind,
+          direction,
+          depth,
+          search,
+          confidence,
+          relationFilter,
+          nextContinuation,
+          rootIds,
+          pathTarget
+        )
       );
       setResponse(next);
       setSelectedId((current) =>
         current && next.nodes.some((node) => node.id === current) ? current : next.nodes[0]?.id ?? null
       );
-      const viewKey = `${direction}:${depth}:${search.trim()}`;
+      const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
       let saved: SavedGraphLayout | null = null;
       try {
         saved = await loadGraphLayout(root, projectId, graphKind, viewKey);
@@ -190,7 +294,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
   }
 
   function saveCurrentLayout() {
-    const viewKey = `${direction}:${depth}:${search.trim()}`;
+    const viewKey = `${direction}:${depth}:${search.trim()}:${confidence}:${relationFilter}:${rootIds.join(",")}:${pathTarget ?? ""}`;
     const layout: SavedGraphLayout = {
       protocol_version: 1,
       project_id: projectId,
@@ -202,6 +306,49 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
     void saveGraphLayout(root, layout)
       .then(() => onStatus?.("布局已保存"))
       .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+  }
+
+  function downloadBlob(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function exportSvg() {
+    const svg = canvasRef.current;
+    if (!svg) {
+      setError("Cytoscape 画布当前没有可导出的 SVG 快照");
+      return;
+    }
+    const serialized = new XMLSerializer().serializeToString(svg);
+    downloadBlob(new Blob([serialized], { type: "image/svg+xml;charset=utf-8" }), `cppinsight-${graphKind}.svg`);
+  }
+
+  function exportPng() {
+    const svg = canvasRef.current;
+    if (!svg) {
+      setError("Cytoscape 画布当前没有可导出的 PNG 快照");
+      return;
+    }
+    const serialized = new XMLSerializer().serializeToString(svg);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = CANVAS_WIDTH;
+      canvas.height = CANVAS_HEIGHT;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.fillStyle = "#0d141b";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob((blob) => {
+        if (blob) downloadBlob(blob, `cppinsight-${graphKind}.png`);
+      }, "image/png");
+    };
+    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`;
   }
 
   function onPointerMove(event: React.PointerEvent<SVGSVGElement>) {
@@ -229,6 +376,12 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
           </button>
           <button className="secondary" disabled={nodes.length === 0} onClick={saveCurrentLayout}>
             保存布局
+          </button>
+          <button className="secondary" disabled={nodes.length === 0} onClick={exportSvg}>
+            导出 SVG
+          </button>
+          <button className="secondary" disabled={nodes.length === 0} onClick={exportPng}>
+            导出 PNG
           </button>
         </div>
       </div>
@@ -258,7 +411,7 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
           <span>深度</span>
           <input type="number" min={0} max={8} value={depth} onChange={(event) => setDepth(Number(event.target.value))} />
         </label>
-        <label className="graph-search">
+          <label className="graph-search">
           <span>搜索</span>
           <input
             type="search"
@@ -271,10 +424,31 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
               }
             }}
           />
+          </label>
+        <label>
+          <span>置信度</span>
+          <select value={confidence} onChange={(event) => setConfidence(event.target.value as GraphConfidence | "all")}>
+            <option value="all">全部</option>
+            <option value="resolved">已解析</option>
+            <option value="heuristic">启发式</option>
+            <option value="ambiguous">歧义</option>
+            <option value="unresolved">未解析</option>
+          </select>
+        </label>
+        <label>
+          <span>关系类型</span>
+          <input
+            placeholder="calls, inherits…"
+            value={relationFilter}
+            onChange={(event) => setRelationFilter(event.target.value)}
+          />
         </label>
         <button className="secondary" disabled={loading} onClick={() => void loadGraph()}>
           应用筛选
         </button>
+        <button className="secondary" disabled={zoom >= 2} onClick={() => setZoom((value) => Math.min(2, value + 0.2))}>放大</button>
+        <button className="secondary" disabled={zoom <= 0.6} onClick={() => setZoom((value) => Math.max(0.6, value - 0.2))}>缩小</button>
+        <button className="secondary" onClick={() => setZoom(1)}>适应</button>
       </div>
 
       {error ? <div className="banner error">关系图查询失败：{error}</div> : null}
@@ -293,16 +467,27 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
         <div className="graph-canvas-wrap">
           {nodes.length === 0 ? (
             <div className="graph-empty muted">暂无关系数据。请先完成索引，或调整图类型与筛选条件。</div>
+          ) : cytoscapeFactory ? (
+            <div
+              ref={cytoscapeContainerRef}
+              className="graph-canvas cytoscape-canvas"
+              data-engine="cytoscape.js"
+              aria-label="Cytoscape.js 代码关系图"
+            />
           ) : (
             <svg
               ref={canvasRef}
               className="graph-canvas"
-              viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+              viewBox={`0 0 ${CANVAS_WIDTH / zoom} ${CANVAS_HEIGHT / zoom}`}
               role="img"
               aria-label="代码关系图"
               onPointerMove={onPointerMove}
               onPointerUp={() => setDraggingId(null)}
               onPointerLeave={() => setDraggingId(null)}
+              onWheel={(event) => {
+                event.preventDefault();
+                setZoom((value) => Math.max(0.6, Math.min(2, value + (event.deltaY < 0 ? 0.1 : -0.1))));
+              }}
             >
               <defs>
                 <marker id="graph-arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
@@ -367,6 +552,25 @@ export default function GraphWorkbench({ root, projectId, onStatus }: Props) {
                 <span className="graph-node-dot" style={{ background: nodeColor(selected) }} />
                 <strong>{selected.label}</strong>
               </div>
+              <div className="graph-node-actions">
+                <button
+                  className="secondary"
+                  onClick={() => setRootIds([selected.id])}
+                >
+                  设为查询根
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() => setPathTarget(selected.id)}
+                >
+                  设为路径目标
+                </button>
+              </div>
+              {rootIds.length > 0 || pathTarget ? (
+                <p className="muted graph-query-hint">
+                  根：{rootIds.join(", ") || "自动"} · 目标：{pathTarget || "未设置"}（点击“应用筛选”执行）
+                </p>
+              ) : null}
               <dl className="graph-details">
                 <dt>稳定 ID</dt><dd><code>{selected.id}</code></dd>
                 <dt>限定名</dt><dd>{selected.qualified_name || "—"}</dd>

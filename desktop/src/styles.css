@@ -866,6 +866,18 @@ pre {
   gap: 8px;
 }
 
+.graph-node-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 4px;
+}
+
+.graph-query-hint {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
 .graph-node-dot,
 .legend-dot {
   display: inline-block;
