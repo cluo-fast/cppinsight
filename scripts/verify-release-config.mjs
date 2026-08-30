@@ -54,6 +54,11 @@ requireValue(
   "desktop package must provide runtime mode regression test"
 );
 requireValue(
+  desktopPackage.scripts?.["test:ai-mode"] ===
+    "node --experimental-strip-types ../scripts/ai-mode.test.mjs",
+  "desktop package must provide AI mode regression test"
+);
+requireValue(
   desktopPackage.scripts?.["test:artifact-manifest"] ===
     "node --test ../scripts/verify-sha256-manifest.test.mjs",
   "desktop package must provide artifact manifest verification test"
@@ -129,6 +134,7 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run test:graph-workbench-state",
     "pnpm run test:report-html",
     "pnpm run test:runtime-mode",
+    "pnpm run test:ai-mode",
     "pnpm run test:artifact-manifest",
     "pnpm run test:benchmark-result",
     "pnpm run test:benchmark-corpus",
@@ -216,7 +222,6 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "settings-privacy-note",
   "previewAskContext",
   "发送前确认上下文",
-  "只发送下列文件和行号范围",
   "getVersion",
   "未找到 compile_commands.json",
   "requestedGraphNodeId",
@@ -227,9 +232,18 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "exportClientSummary(active.overview.root",
   "正在生成本地接手报告",
   "完成索引后将生成本地接手报告",
+  "ai_enabled",
+  "本地检索",
   "在函数调用图中查看",
   "graph_node_id",
   "回到关系图"
+]);
+requireTextMarkers(path.join(root, "desktop", "src", "aiMode.ts"), "AI local-only mode helper", [
+  "aiModeLabel",
+  "canSaveAiSettings",
+  "askContextDescription",
+  "AI 已关闭，仅本地分析",
+  "只发送下列文件和行号范围"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "graph workbench navigation", [
   "requestedGraphNodeId",

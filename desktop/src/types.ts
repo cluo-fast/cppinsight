@@ -172,9 +172,10 @@ export interface IndexProgressEvent {
 }
 
 export interface PublicOpenAiSettings {
-    base_url: string;
-    model: string;
-    api_key_configured: boolean;
+  base_url: string;
+  model: string;
+  api_key_configured: boolean;
+  ai_enabled: boolean;
 }
 
 export interface UpdateOpenAiSettings {
@@ -182,6 +183,7 @@ export interface UpdateOpenAiSettings {
   model: string;
   api_key: string | null;
   clear_api_key: boolean;
+  ai_enabled: boolean;
 }
 
 export interface DiagnosticProject {

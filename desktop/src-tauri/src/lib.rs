@@ -337,6 +337,13 @@ pub async fn ask_project_at_with_settings(
         });
     }
 
+    if !ai_settings.ai_enabled {
+        return Ok(AskResponse {
+            answer: "AI 已关闭；以下是本地检索到的相关代码位置。".to_string(),
+            citations: contexts_to_citations(&contexts),
+        });
+    }
+
     if ai_settings.api_key.trim().is_empty() {
         return Ok(AskResponse {
             answer: "OpenAI API key is not configured. Set it in Settings, or via OPENAI_API_KEY."
@@ -2910,6 +2917,7 @@ pub struct OpenAiSettings {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    pub ai_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2917,6 +2925,7 @@ pub struct PublicOpenAiSettings {
     pub base_url: String,
     pub model: String,
     pub api_key_configured: bool,
+    pub ai_enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2926,6 +2935,8 @@ pub struct UpdateOpenAiSettings {
     pub api_key: Option<String>,
     #[serde(default)]
     pub clear_api_key: bool,
+    #[serde(default = "default_ai_enabled")]
+    pub ai_enabled: bool,
 }
 
 pub fn public_openai_settings(settings: &OpenAiSettings) -> PublicOpenAiSettings {
@@ -2933,6 +2944,7 @@ pub fn public_openai_settings(settings: &OpenAiSettings) -> PublicOpenAiSettings
         base_url: settings.base_url.clone(),
         model: settings.model.clone(),
         api_key_configured: !settings.api_key.trim().is_empty(),
+        ai_enabled: settings.ai_enabled,
     }
 }
 
@@ -2942,6 +2954,7 @@ impl Default for OpenAiSettings {
             base_url: default_openai_base_url(),
             api_key: String::new(),
             model: default_openai_model(),
+            ai_enabled: true,
         }
     }
 }
@@ -2952,6 +2965,10 @@ pub fn default_openai_base_url() -> String {
 
 pub fn default_openai_model() -> String {
     "gpt-4o-mini".to_string()
+}
+
+fn default_ai_enabled() -> bool {
+    true
 }
 
 fn read_setting_value(connection: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -3033,6 +3050,10 @@ pub fn read_openai_settings_with_backend(
         settings.model = value;
     }
 
+    if let Some(value) = read_setting_value(connection, "openai_ai_enabled")? {
+        settings.ai_enabled = value != "0" && !value.eq_ignore_ascii_case("false");
+    }
+
     Ok(settings)
 }
 
@@ -3065,6 +3086,11 @@ pub fn set_openai_settings_at(
 
     upsert_setting_value(&connection, "openai_base_url", &base_url)?;
     upsert_setting_value(&connection, "openai_model", &model)?;
+    upsert_setting_value(
+        &connection,
+        "openai_ai_enabled",
+        if settings.ai_enabled { "true" } else { "false" },
+    )?;
     secrets::update_api_key(
         &backend,
         settings.api_key.as_deref(),
@@ -3844,12 +3870,33 @@ mod tests {
             base_url: "https://example.test/v1".to_string(),
             api_key: "sk-never-return-this".to_string(),
             model: "test-model".to_string(),
+            ai_enabled: false,
         });
         let json = serde_json::to_string(&public).unwrap();
 
         assert!(public.api_key_configured);
+        assert!(!public.ai_enabled);
         assert!(!json.contains("sk-never-return-this"));
         assert!(!json.contains("api_key\""));
+    }
+
+    #[test]
+    fn ai_enabled_setting_defaults_on_and_reads_explicit_local_only_value() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        super::migrate_database(&connection).unwrap();
+        let backend = TestSecretBackend::default();
+
+        assert!(
+            read_openai_settings_with_backend(&connection, &backend)
+                .unwrap()
+                .ai_enabled
+        );
+        super::upsert_setting_value(&connection, "openai_ai_enabled", "false").unwrap();
+        assert!(
+            !read_openai_settings_with_backend(&connection, &backend)
+                .unwrap()
+                .ai_enabled
+        );
     }
 
     #[test]

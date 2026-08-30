@@ -21,6 +21,7 @@ import {
   setOpenAiSettings
 } from "./api";
 import GraphWorkbench from "./GraphWorkbench";
+import { aiModeLabel, askContextDescription, canSaveAiSettings } from "./aiMode";
 import { summaryAsHtml } from "./reportHtml";
 import { BROWSER_PREVIEW_MESSAGE, desktopActionMessage, isDesktopActionDisabled, isTauriRuntime } from "./runtime";
 import type {
@@ -44,6 +45,7 @@ const DEFAULT_AI_SETTINGS: OpenAiSettings = {
   api_key: "",
   model: "gpt-4o-mini",
   api_key_configured: false,
+  ai_enabled: true,
   clear_api_key: false
 };
 
@@ -52,6 +54,7 @@ type OpenAiSettings = {
   api_key: string;
   model: string;
   api_key_configured: boolean;
+  ai_enabled: boolean;
   clear_api_key: boolean;
 };
 
@@ -285,6 +288,25 @@ export default function App() {
       .then((version) => setAppVersion(version))
       .catch(() => {
         // Browser development mode has no Tauri app metadata; keep the package fallback.
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    void getOpenAiSettings()
+      .then((loaded) => {
+        setAiSettings((current) => ({
+          ...current,
+          base_url: loaded.base_url || current.base_url,
+          model: loaded.model || current.model,
+          api_key_configured: loaded.api_key_configured,
+          ai_enabled: loaded.ai_enabled
+        }));
+      })
+      .catch(() => {
+        // Settings remain at safe defaults when the local settings store is unavailable.
       });
   }, []);
 
@@ -1102,6 +1124,7 @@ export default function App() {
                       api_key: "",
                       model: loaded.model || DEFAULT_AI_SETTINGS.model,
                       api_key_configured: loaded.api_key_configured,
+                      ai_enabled: loaded.ai_enabled,
                       clear_api_key: false
                     });
                   } catch {
@@ -1139,6 +1162,19 @@ export default function App() {
           <p className="settings-privacy-note">
             扫描、索引和关系图默认只在本机运行；只有主动提问时才会发送所选上下文。诊断导出会先脱敏预览，不包含源码、绝对路径或密钥。
           </p>
+          <label className="settings-field">
+            <span>AI 模式</span>
+            <span>
+              <input
+                type="checkbox"
+                checked={aiSettings.ai_enabled}
+                onChange={(event) =>
+                  setAiSettings((current) => ({ ...current, ai_enabled: event.target.checked }))
+                }
+              />{" "}
+              {aiModeLabel(aiSettings.ai_enabled)}
+            </span>
+          </label>
           <label className="settings-field">
             <span>Base URL</span>
             <input
@@ -1205,7 +1241,11 @@ export default function App() {
               className="secondary"
               disabled={
                 settingsSaving ||
-                (!aiSettings.api_key_configured && !aiSettings.api_key.trim())
+                !canSaveAiSettings(
+                  aiSettings.ai_enabled,
+                  aiSettings.api_key_configured,
+                  aiSettings.api_key
+                )
               }
               onClick={() => {
                 void (async () => {
@@ -1216,8 +1256,10 @@ export default function App() {
                       base_url: aiSettings.base_url.trim() || DEFAULT_AI_SETTINGS.base_url,
                       api_key: aiSettings.api_key.trim() || null,
                       model: aiSettings.model.trim() || DEFAULT_AI_SETTINGS.model,
-                      clear_api_key: aiSettings.clear_api_key
+                      clear_api_key: aiSettings.clear_api_key,
+                      ai_enabled: aiSettings.ai_enabled
                     });
+                    setAiSettings((current) => ({ ...current, ai_enabled: aiSettings.ai_enabled }));
                     setShowSettings(false);
                   } catch (err) {
                     setError(err instanceof Error ? err.message : String(err));
@@ -1752,7 +1794,7 @@ export default function App() {
                     disabled={composerLocked}
                     onClick={() => updateActiveChat({ composerMode: "ask" })}
                   >
-                    问 AI
+                    {aiSettings.ai_enabled ? "问 AI" : "本地检索"}
                   </button>
                   <button
                     type="button"
@@ -1764,7 +1806,11 @@ export default function App() {
                   </button>
                 </div>
                 {composerMode === "ask" ? (
-                  <div className="chip-row">
+                  <>
+                    {!aiSettings.ai_enabled ? (
+                      <p className="composer-hint muted">{aiModeLabel(false)}：不会向任何模型发送内容，仅返回本地检索结果。</p>
+                    ) : null}
+                    <div className="chip-row">
                     {SUGGESTED_QUESTIONS.map((item) => (
                       <button
                         key={item}
@@ -1778,7 +1824,8 @@ export default function App() {
                         {item}
                       </button>
                     ))}
-                  </div>
+                    </div>
+                  </>
                 ) : (
                   <p className="composer-hint muted">
                     输入函数/类名查看定义、上游调用、下游被调与入口路径（本地索引，不调用模型）。
@@ -1789,7 +1836,7 @@ export default function App() {
                     <div>
                       <strong>发送前确认上下文</strong>
                       <p className="muted">
-                        本次回答将使用 {pendingAsk.citations.length} 个本地片段；只发送下列文件和行号范围，绝不自动上传整个项目。
+                        {askContextDescription(aiSettings.ai_enabled, pendingAsk.citations.length)}
                       </p>
                     </div>
                     {pendingAsk.citations.length > 0 ? (
@@ -1841,7 +1888,9 @@ export default function App() {
                       ? "处理中…"
                       : composerMode === "symbol"
                         ? "查询"
-                        : "发送"}
+                        : aiSettings.ai_enabled
+                          ? "发送"
+                          : "本地检索"}
                   </button>
                 </div>
               </footer>

@@ -74,6 +74,7 @@ jobs:
           pnpm run test:graph-workbench-state
           pnpm run test:report-html
           pnpm run test:runtime-mode
+          pnpm run test:ai-mode
           pnpm run test:artifact-manifest
           pnpm run test:benchmark-result
           pnpm run test:benchmark-corpus
