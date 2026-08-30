@@ -105,6 +105,12 @@ requireTextMarkers(path.join(root, "scripts", "package-app.ps1"), "package scrip
   "--bin cppinsight-workbench"
 ]);
 requireFile(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script");
+requireTextMarkers(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script", [
+  "Assert-AppStarts",
+  "WaitForExit(5000)",
+  "MSI reinstall",
+  "NSIS reinstall"
+]);
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
 requireFile(
   path.join(root, "examples", "sample-cpp", "compile_commands.json"),
