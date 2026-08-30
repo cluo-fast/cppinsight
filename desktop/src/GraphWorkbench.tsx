@@ -12,14 +12,13 @@ import {
   nodeColor,
   shortLabel
 } from "./graphSnapshot";
+import { createGraphRequest, mergeGraphResponses } from "./graphWorkbenchState";
 import type {
   GraphConfidence,
   GraphDirection,
-  GraphEdge,
   GraphKind,
   GraphNode,
   GraphPosition,
-  GraphQueryRequest,
   GraphQueryResponse,
   SavedGraphLayout
 } from "./types";
@@ -56,41 +55,6 @@ type Props = {
 
 type CytoscapeFactory = typeof import("cytoscape");
 
-function createRequest(
-  projectId: number,
-  graphKind: GraphKind,
-  direction: GraphDirection,
-  depth: number,
-  search: string,
-  confidence: GraphConfidence | "all",
-  relationFilter: string,
-  continuation: string | null,
-  roots: string[] = [],
-  pathTarget: string | null = null
-): GraphQueryRequest {
-  return {
-    protocol_version: 1,
-    project_id: projectId,
-    graph_kind: graphKind,
-    root_node_ids: roots,
-    direction,
-    depth,
-    filters: {
-      module_ids: [],
-      file_paths: [],
-      symbol_kinds: [],
-      relation_kinds: relationFilter.trim()
-        ? relationFilter.split(",").map((item) => item.trim()).filter(Boolean)
-        : [],
-      confidence: confidence === "all" ? [] : [confidence],
-      search: search.trim() || null
-    },
-    max_nodes: 500,
-    path_target: pathTarget,
-    continuation
-  };
-}
-
 function fallbackPosition(index: number, total: number): GraphPosition {
   const columns = Math.max(1, Math.ceil(Math.sqrt(total)));
   const rows = Math.max(1, Math.ceil(total / columns));
@@ -99,21 +63,6 @@ function fallbackPosition(index: number, total: number): GraphPosition {
   return {
     x: 80 + (column / Math.max(1, columns - 1)) * 840,
     y: 80 + (row / Math.max(1, rows - 1)) * 460
-  };
-}
-
-function mergeGraphResponses(previous: GraphQueryResponse, next: GraphQueryResponse): GraphQueryResponse {
-  const nodes = new Map(previous.nodes.map((node) => [node.id, node]));
-  next.nodes.forEach((node) => nodes.set(node.id, node));
-  const edges = new Map(previous.edges.map((edge) => [edge.id, edge]));
-  next.edges.forEach((edge) => edges.set(edge.id, edge));
-  const evidence = new Map(previous.evidence.map((item) => [item.id, item]));
-  next.evidence.forEach((item) => evidence.set(item.id, item));
-  return {
-    ...next,
-    nodes: [...nodes.values()],
-    edges: [...edges.values()],
-    evidence: [...evidence.values()]
   };
 }
 
@@ -371,7 +320,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     try {
       const next = await queryGraph(
         root,
-        createRequest(
+        createGraphRequest(
           projectId,
           graphKind,
           direction,

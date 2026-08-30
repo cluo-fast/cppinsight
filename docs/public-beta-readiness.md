@@ -24,6 +24,7 @@
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
 - [x] C++ CTest、Rust 42 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] 固定数据集 SVG 结构快照回归测试（稳定性、XML 转义、路径/中心节点高亮）。
+- [x] GraphWorkbench 状态回归测试覆盖请求筛选/分页参数和多页节点、边、证据合并。
 - [x] HTML 客户摘要独立转码测试覆盖标题、正文、视图标签的 HTML 转义和脚本载荷防护。
 - [x] 桌面运行时检测回归测试覆盖浏览器预览与 Tauri IPC 桥接，避免把开发预览误报为原始 `invoke` 异常。
 - [x] Windows 制品 SHA-256 清单有跨平台校验器，拒绝绝对路径、路径穿越、重复条目、缺失文件和哈希不匹配。

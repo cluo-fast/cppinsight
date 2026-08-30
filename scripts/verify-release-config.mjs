@@ -39,6 +39,11 @@ requireValue(
   "desktop package must provide graph snapshot regression test"
 );
 requireValue(
+  desktopPackage.scripts?.["test:graph-workbench-state"] ===
+    "node --experimental-strip-types ../scripts/graph-workbench-state.test.mjs",
+  "desktop package must provide GraphWorkbench state regression test"
+);
+requireValue(
   desktopPackage.scripts?.["test:report-html"] ===
     "node --experimental-strip-types ../scripts/report-html.test.mjs",
   "desktop package must provide HTML report security regression test"
@@ -110,6 +115,7 @@ if (existsSync(windowsWorkflowPath)) {
     "cargo test",
     "pnpm run build",
     "pnpm run test:graph-snapshot",
+    "pnpm run test:graph-workbench-state",
     "pnpm run test:report-html",
     "pnpm run test:runtime-mode",
     "pnpm run test:artifact-manifest",
@@ -233,6 +239,8 @@ requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph ben
 ]);
 requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot regression test");
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
+requireFile(path.join(root, "scripts", "graph-workbench-state.test.mjs"), "GraphWorkbench state regression test");
+requireFile(path.join(root, "desktop", "src", "graphWorkbenchState.ts"), "GraphWorkbench state helpers");
 requireFile(path.join(root, "scripts", "report-html.test.mjs"), "HTML report security regression test");
 requireFile(path.join(root, "desktop", "src", "reportHtml.ts"), "HTML report renderer");
 requireFile(path.join(root, "scripts", "runtime-mode.test.mjs"), "runtime mode regression test");
