@@ -66,6 +66,60 @@ test("graph SVG snapshot highlights path and central nodes", () => {
   assert.match(svg, /r="17"/);
 });
 
+test("graph SVG snapshot covers every first-release graph kind", () => {
+  const graphKinds = [
+    ["module_dependencies", "module", "depends_on"],
+    ["function_calls", "function", "calls"],
+    ["class_relations", "class", "inherits"],
+    ["file_includes", "file", "includes"],
+    ["entry_paths", "function", "entry_path"]
+  ];
+
+  for (const [graphKind, nodeKind, edgeKind] of graphKinds) {
+    const source = {
+      id: `sym:${graphKind}:source`,
+      kind: nodeKind,
+      label: `${graphKind}:A`,
+      qualified_name: `fixture::${graphKind}::source`,
+      file: `src/${graphKind}.cpp`,
+      line: 1,
+      confidence: "precise",
+      ambiguous: false,
+      metadata: {}
+    };
+    const target = {
+      ...source,
+      id: `sym:${graphKind}:target`,
+      label: `${graphKind}:B`,
+      qualified_name: `fixture::${graphKind}::target`,
+      line: 2
+    };
+    const svg = graphSvgSnapshot(
+      [source, target],
+      [{
+        id: `edge:${graphKind}`,
+        source: source.id,
+        target: target.id,
+        kind: edgeKind,
+        weight: 1,
+        confidence: "precise",
+        evidence_ids: []
+      }],
+      {
+        [source.id]: { x: 120, y: 80 },
+        [target.id]: { x: 420, y: 260 }
+      },
+      new Set(),
+      new Set()
+    );
+
+    assert.match(svg, new RegExp(`${graphKind}:A`));
+    assert.match(svg, new RegExp(`${graphKind}:B`));
+    assert.equal((svg.match(/<circle /g) ?? []).length, 2);
+    assert.equal((svg.match(/<line /g) ?? []).length, 1);
+  }
+});
+
 test("collapsed nodes hide only downstream descendants", () => {
   const hidden = hiddenDescendants(edges.concat({
     id: "edge:bbbbbbbbbbbbbbbb",
