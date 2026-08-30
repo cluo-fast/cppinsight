@@ -53,7 +53,7 @@ pnpm tauri dev
 .\scripts\package-app.ps1
 ```
 
-`scripts/package-app.ps1` 会构建并测试 C++ Release 扫描器，复制资源，按锁文件安装前端依赖，运行验证并调用 Tauri 生成 NSIS/MSI。Windows 签名、GitHub secrets、SHA-256 校验与回滚清单见 `docs/releasing-windows.md`。
+`scripts/package-app.ps1` 会构建并测试 C++ Release 扫描器，复制资源，按锁文件安装前端依赖，运行验证、构建 Release Workbench CLI，并调用 Tauri 生成 NSIS/MSI。Windows 签名、GitHub secrets、SHA-256 校验与回滚清单见 `docs/releasing-windows.md`。
 
 macOS 上的 Rust/前端测试不能证明 Windows 安装包可用；`.github/workflows/windows-ci.yml` 的 Windows runner 是 MSI/NSIS 构建的权威验证环境。
 
