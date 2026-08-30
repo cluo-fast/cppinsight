@@ -2890,6 +2890,21 @@ fn contexts_to_citations(contexts: &[SearchContext]) -> Vec<Citation> {
         .collect()
 }
 
+/// Return the exact file ranges that would be supplied as model context for a question.
+/// The preview intentionally exposes no source text; callers can show locations before
+/// an optional network request is made.
+pub fn build_ask_context_preview(
+    connection: &Connection,
+    project_id: i64,
+    question: &str,
+) -> Result<Vec<Citation>, String> {
+    if question.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let contexts = search_contexts(connection, project_id, question, 8)?;
+    Ok(contexts_to_citations(&contexts))
+}
+
 #[derive(Debug, Clone)]
 pub struct OpenAiSettings {
     pub base_url: String,
@@ -3656,6 +3671,7 @@ pub fn run() {
             commands::preview_diagnostics,
             commands::export_diagnostics,
             commands::ask_project,
+            commands::preview_ask_context,
             commands::export_client_summary,
             commands::inspect_symbol,
             commands::query_graph,
@@ -4520,6 +4536,32 @@ data: [DONE]
         );
         assert!(selected[0].score >= selected.iter().map(|c| c.score).max().unwrap_or(0));
         assert_ne!(selected[0].file, "docs/notes.txt");
+    }
+
+    #[test]
+    fn ask_context_preview_returns_only_ranked_file_ranges() {
+        let connection = open_memory_db();
+        connection
+            .execute(
+                "INSERT INTO projects(root, indexed_at, file_count, symbol_count, include_count, diagnostics_json, mode, confidence)
+                 VALUES('D:/preview', 'now', 1, 0, 0, '[]', 'heuristic', 'heuristic')",
+                [],
+            )
+            .unwrap();
+        let project_id = connection.last_insert_rowid();
+        connection
+            .execute(
+                "INSERT INTO chunks(project_id, file, start_line, end_line, text)
+                 VALUES(?1, 'src/main.cpp', 10, 18, 'int main() { return 0; }')",
+                rusqlite::params![project_id],
+            )
+            .unwrap();
+
+        let preview = super::build_ask_context_preview(&connection, project_id, "main").unwrap();
+        assert_eq!(preview.len(), 1);
+        assert_eq!(preview[0].file, "src/main.cpp");
+        assert_eq!(preview[0].line, 10);
+        assert_eq!(preview[0].title, "src/main.cpp:10-18");
     }
 
     #[test]

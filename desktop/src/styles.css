@@ -562,6 +562,40 @@ button:disabled {
   font-size: 13px;
 }
 
+.ask-context-preview {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(116, 192, 252, 0.45);
+  border-radius: 12px;
+  background: rgba(61, 156, 240, 0.1);
+}
+
+.ask-context-preview strong {
+  color: var(--accent-2);
+}
+
+.ask-context-preview p {
+  margin: 4px 0 0;
+  font-size: 12px;
+}
+
+.ask-context-preview ul {
+  display: grid;
+  gap: 4px;
+  max-height: 120px;
+  margin: 0;
+  padding-left: 18px;
+  overflow: auto;
+}
+
+.ask-context-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .inspect-card {
   margin-top: 8px;
   padding: 12px;

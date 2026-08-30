@@ -15,6 +15,7 @@ import {
   loadProjectChats,
   loadWorkspace,
   previewDiagnostics,
+  previewAskContext,
   prepareSampleProject,
   saveWorkspace,
   setOpenAiSettings
@@ -25,6 +26,7 @@ import { isTauriRuntime } from "./runtime";
 import type {
   AskResponse,
   ChatMessage,
+  Citation,
   ComposerMode,
   GraphKind,
   IndexProgressEvent,
@@ -51,6 +53,14 @@ type OpenAiSettings = {
   model: string;
   api_key_configured: boolean;
   clear_api_key: boolean;
+};
+
+type PendingAsk = {
+  sessionId: string;
+  chatId: string;
+  question: string;
+  graphNodeId?: string;
+  citations: Citation[];
 };
 
 type ChatThread = {
@@ -260,6 +270,8 @@ export default function App() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [diagnosticBusy, setDiagnosticBusy] = useState(false);
   const [diagnosticPreview, setDiagnosticPreview] = useState<string | null>(null);
+  const [pendingAsk, setPendingAsk] = useState<PendingAsk | null>(null);
+  const [askPreviewBusy, setAskPreviewBusy] = useState(false);
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [showGraph, setShowGraph] = useState(false);
   const [requestedGraphKind, setRequestedGraphKind] = useState<GraphKind | null>(null);
@@ -297,6 +309,10 @@ export default function App() {
     () => sessions.find((session) => session.id === activeRoot) ?? null,
     [sessions, activeRoot]
   );
+
+  useEffect(() => {
+    setPendingAsk(null);
+  }, [activeRoot, active?.activeChatId]);
 
   function openReportGraph(kind: GraphKind) {
     setGraphRequestId((current) => current + 1);
@@ -837,6 +853,37 @@ export default function App() {
     }
   }
 
+  async function prepareQuestion(text: string, graphNodeId?: string) {
+    if (!active || !activeChat || !text.trim() || activeChat.running || active.indexMissing || askPreviewBusy) {
+      return;
+    }
+    const trimmed = text.trim();
+    const sessionId = active.id;
+    const chatId = activeChat.id;
+    setAskPreviewBusy(true);
+    setError(null);
+    setStatus("正在整理将发送的代码片段…");
+    try {
+      const citations = await previewAskContext(active.overview.root, active.overview.project_id, trimmed);
+      if (activeRootRef.current !== sessionId) {
+        setStatus(null);
+        return;
+      }
+      const currentSession = sessionsRef.current.find((session) => session.id === sessionId);
+      if (!currentSession || currentSession.activeChatId !== chatId) {
+        setStatus(null);
+        return;
+      }
+      setPendingAsk({ sessionId, chatId, question: trimmed, graphNodeId, citations });
+      setStatus(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setStatus(null);
+    } finally {
+      setAskPreviewBusy(false);
+    }
+  }
+
   async function sendQuestion(text: string, graphNodeId?: string) {
     if (!active || !activeChat || !text.trim() || activeChat.running || active.indexMissing) {
       return;
@@ -846,6 +893,7 @@ export default function App() {
     const sessionId = active.id;
     const chatId = activeChat.id;
     const trimmed = text.trim();
+    setPendingAsk(null);
 
     await runChatAction(sessionId, chatId, "正在检索代码并生成回答…", async () => {
       const userMessage: ChatMessage = {
@@ -876,6 +924,16 @@ export default function App() {
         ]
       }));
     });
+  }
+
+  function confirmPendingAsk() {
+    const pending = pendingAsk;
+    if (!pending || !active || !activeChat || pending.sessionId !== active.id || pending.chatId !== activeChat.id) {
+      setPendingAsk(null);
+      return;
+    }
+    setPendingAsk(null);
+    void sendQuestion(pending.question, pending.graphNodeId);
   }
 
   async function sendInspect(text: string) {
@@ -938,7 +996,7 @@ export default function App() {
       void sendInspect(text);
       return;
     }
-    void sendQuestion(text);
+    void prepareQuestion(text);
   }
 
   async function exportSummary(format: "markdown" | "html") {
@@ -965,7 +1023,7 @@ export default function App() {
   const chatBusy = Boolean(activeChat?.running);
   const projectIndexing = Boolean(active?.indexing);
   const indexBlocked = Boolean(active?.indexMissing);
-  const composerLocked = chatBusy || indexBlocked || projectIndexing;
+  const composerLocked = chatBusy || indexBlocked || projectIndexing || askPreviewBusy || pendingAsk !== null;
 
   async function showDiagnosticPreview() {
     setDiagnosticBusy(true);
@@ -1356,7 +1414,7 @@ export default function App() {
                     projectId={overview.project_id}
                     onStatus={setStatus}
                     onInspectSymbol={(query) => void sendInspect(query)}
-                    onAskAi={(question, nodeId) => void sendQuestion(question, nodeId)}
+                    onAskAi={(question, nodeId) => void prepareQuestion(question, nodeId)}
                     onGraphSnapshot={setGraphSnapshot}
                     requestedGraphKind={requestedGraphKind}
                     requestedGraphNodeId={requestedGraphNodeId}
@@ -1587,7 +1645,7 @@ export default function App() {
                                         composerMode: "ask",
                                         question: prompt
                                       });
-                                      void sendQuestion(prompt);
+                                      void prepareQuestion(prompt);
                                     }}
                                   >
                                     用 AI 解释
@@ -1701,7 +1759,7 @@ export default function App() {
                         disabled={composerLocked}
                         onClick={() => {
                           updateActiveChat({ question: item, composerMode: "ask" });
-                          void sendQuestion(item);
+                          void prepareQuestion(item);
                         }}
                       >
                         {item}
@@ -1713,6 +1771,35 @@ export default function App() {
                     输入函数/类名查看定义、上游调用、下游被调与入口路径（本地索引，不调用模型）。
                   </p>
                 )}
+                {pendingAsk && pendingAsk.sessionId === active.id && pendingAsk.chatId === activeChat.id ? (
+                  <div className="ask-context-preview" role="dialog" aria-label="发送前上下文预览">
+                    <div>
+                      <strong>发送前确认上下文</strong>
+                      <p className="muted">
+                        本次回答将使用 {pendingAsk.citations.length} 个本地片段；只发送下列文件和行号范围，绝不自动上传整个项目。
+                      </p>
+                    </div>
+                    {pendingAsk.citations.length > 0 ? (
+                      <ul>
+                        {pendingAsk.citations.map((citation) => (
+                          <li key={`${citation.file}:${citation.line}:${citation.title}`}>
+                            <code>{citation.title}</code>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="muted">没有找到匹配源码片段；不会向模型发送源码上下文。</p>
+                    )}
+                    <div className="ask-context-actions">
+                      <button type="button" className="secondary" onClick={() => setPendingAsk(null)}>
+                        取消
+                      </button>
+                      <button type="button" onClick={confirmPendingAsk}>
+                        确认发送
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="ask-box">
                   <textarea
                     value={activeChat.question}

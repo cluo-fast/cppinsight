@@ -19,10 +19,11 @@
 - [x] 从关系图节点发起的 AI 问答会保存稳定节点 ID，回答卡片可回到原关系图节点。
 - [x] 欢迎页提供内置示例项目入口，首次体验不需要命令行或准备外部仓库。
 - [x] 设置页显示运行版本、隐私边界和 GitHub 反馈入口，并支持脱敏诊断预览/导出。
+- [x] 每次 AI 请求发送前展示将使用的本地文件和行号范围，确认后才继续调用模型。
 - [x] GitHub 公开测试 Bug 表单要求版本、复现步骤和隐私确认，减少源码与凭据误上传。
 - [x] `examples/sample-cpp` 可独立 CMake 构建；本机扫描与 Workbench 五类图查询均已跑通，Windows CI 也会重复该烟测。
 - [x] CLI stdin 图查询与 MCP `cppinsight_graph` 协议转换代码；不静默截断参数。
-- [x] C++ CTest、Rust 42 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
+- [x] C++ CTest、Rust 43 库测试 + 2 Workbench 测试 + 14 图协议测试、Clippy、TypeScript/Vite 和 release verifier。
 - [x] 固定数据集 SVG 结构快照回归测试（稳定性、XML 转义、路径/中心节点高亮）。
 - [x] GraphWorkbench 状态回归测试覆盖请求筛选/分页参数和多页节点、边、证据合并。
 - [x] HTML 客户摘要独立转码测试覆盖标题、正文、视图标签的 HTML 转义和脚本载荷防护。

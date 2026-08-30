@@ -52,6 +52,7 @@ GraphWorkbench 使用统一、版本化的图查询模型，目标渲染引擎�
 
 - 扫描、统计、索引和关系查询默认在本机完成。
 - 只有用户主动发起 AI 问答时，相关问题与检索出的少量代码上下文才会发送到用户配置的 OpenAI 或兼容端点。
+- 每次 AI 问答发送前会先展示将使用的文件和行号范围；用户确认后才会继续请求模型。
 - API Key 保存到 Windows Credential Manager（macOS 开发环境使用 Keychain），不会保存到 SQLite，也不会返回给前端页面。
 - 设置中的诊断预览/导出只包含版本、平台、匿名项目 ID 和聚合计数，不包含源码、绝对路径、聊天内容或 API Key。
 - 环境变量 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL` 优先于桌面设置。

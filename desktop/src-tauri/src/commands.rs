@@ -14,13 +14,13 @@ use crate::{
     },
 };
 use crate::{
-    ask_project_at_with_settings, build_client_summary, emit_index_progress,
-    index_db_path_for_root, index_scan_json_at, inspect_symbol_at, load_project_overview,
-    migrate_legacy_api_keys, migrate_legacy_project_if_needed, open_database_at,
-    overview_from_scan, project_index_db_path, public_openai_settings, read_openai_settings,
-    run_scan, set_openai_settings_at, settings_db_path_from_app, try_load_indexed_project_at,
-    write_index, AskResponse, IndexProgressEvent, InspectSymbolResponse, ProjectOverview,
-    PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
+    ask_project_at_with_settings, build_ask_context_preview, build_client_summary,
+    emit_index_progress, index_db_path_for_root, index_scan_json_at, inspect_symbol_at,
+    load_project_overview, migrate_legacy_api_keys, migrate_legacy_project_if_needed,
+    open_database_at, overview_from_scan, project_index_db_path, public_openai_settings,
+    read_openai_settings, run_scan, set_openai_settings_at, settings_db_path_from_app,
+    try_load_indexed_project_at, write_index, AskResponse, IndexProgressEvent,
+    InspectSymbolResponse, ProjectOverview, PublicOpenAiSettings, ScanResult, UpdateOpenAiSettings,
 };
 use rusqlite::Connection;
 use serde::Serialize;
@@ -494,6 +494,24 @@ pub async fn ask_project(
     .await
     .map_err(|error| format!("ask scope validation join error: {error}"))??;
     ask_project_at_with_settings(project_id, &question, &db_path, Some(&settings_path)).await
+}
+
+#[tauri::command]
+pub async fn preview_ask_context(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+    question: String,
+) -> Result<Vec<crate::Citation>, String> {
+    let db_path = index_db_path_for_root(&app, Path::new(&root))?;
+    let expected_root = root.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, project_id, &expected_root)?;
+        build_ask_context_preview(&connection, project_id, &question)
+    })
+    .await
+    .map_err(|error| format!("ask context preview join error: {error}"))?
 }
 
 #[tauri::command]

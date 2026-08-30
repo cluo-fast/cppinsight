@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AskResponse,
+  Citation,
   DiagnosticReport,
   GraphKind,
   GraphQueryRequest,
@@ -102,6 +103,14 @@ export function askProject(
   question: string
 ): Promise<AskResponse> {
   return invoke<AskResponse>("ask_project", { root, projectId, question });
+}
+
+export function previewAskContext(
+  root: string,
+  projectId: number,
+  question: string
+): Promise<Citation[]> {
+  return invoke<Citation[]>("preview_ask_context", { root, projectId, question });
 }
 
 export function exportClientSummary(root: string, projectId: number): Promise<string> {

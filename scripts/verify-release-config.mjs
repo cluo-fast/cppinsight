@@ -193,6 +193,9 @@ requireTextMarkers(path.join(root, "docs", "licensing.md"), "license boundary do
 requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app shell", [
   "提交反馈",
   "settings-privacy-note",
+  "previewAskContext",
+  "发送前确认上下文",
+  "只发送下列文件和行号范围",
   "getVersion",
   "未找到 compile_commands.json",
   "requestedGraphNodeId",
@@ -226,6 +229,10 @@ requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "cl
   "## Suggested reading order",
   "Graph findings are heuristic",
   "stable_id: row.get(0)?"
+]);
+requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "commands.rs"), "AI context preview command", [
+  "pub async fn preview_ask_context",
+  "build_ask_context_preview"
 ]);
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "commands.rs"), "index cancellation command", [
   "IndexCancellation",
