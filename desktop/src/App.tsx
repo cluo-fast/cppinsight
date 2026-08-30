@@ -22,7 +22,7 @@ import {
 } from "./api";
 import GraphWorkbench from "./GraphWorkbench";
 import { summaryAsHtml } from "./reportHtml";
-import { isTauriRuntime } from "./runtime";
+import { BROWSER_PREVIEW_MESSAGE, desktopActionMessage, isTauriRuntime } from "./runtime";
 import type {
   AskResponse,
   ChatMessage,
@@ -447,7 +447,7 @@ export default function App() {
     let cancelled = false;
     void (async () => {
       if (!isTauriRuntime()) {
-        setStatus("浏览器预览模式：请在 CppInsight AI 桌面应用中打开项目。");
+        setStatus(BROWSER_PREVIEW_MESSAGE);
         setWorkspaceReady(true);
         return;
       }
@@ -696,6 +696,12 @@ export default function App() {
   }
 
   async function openProject() {
+    const actionMessage = desktopActionMessage();
+    if (actionMessage) {
+      setError(null);
+      setStatus(actionMessage);
+      return;
+    }
     setError(null);
     setStatus("正在选择项目目录…");
     let indexingId: string | null = null;
@@ -734,6 +740,12 @@ export default function App() {
   }
 
   async function openSampleProject() {
+    const actionMessage = desktopActionMessage();
+    if (actionMessage) {
+      setError(null);
+      setStatus(actionMessage);
+      return;
+    }
     setError(null);
     setStatus("正在准备内置示例项目…");
     let indexingId: string | null = null;
@@ -1270,10 +1282,10 @@ export default function App() {
             <li>代码有变时可点「重新索引」；提问时可开多条对话并行</li>
           </ol>
           <div className="welcome-actions">
-            <button className="primary-lg" disabled={anyIndexing} onClick={() => void openProject()}>
+            <button className="primary-lg" disabled={anyIndexing || Boolean(desktopActionMessage())} onClick={() => void openProject()}>
               打开 C/C++ 项目
             </button>
-            <button className="secondary primary-lg" disabled={anyIndexing} onClick={() => void openSampleProject()}>
+            <button className="secondary primary-lg" disabled={anyIndexing || Boolean(desktopActionMessage())} onClick={() => void openSampleProject()}>
               体验内置示例
             </button>
           </div>
