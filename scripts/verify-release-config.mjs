@@ -139,7 +139,8 @@ if (existsSync(windowsWorkflowPath)) {
     "windows-installer-smoke.ps1",
     "Get-FileHash",
     "verify-sha256-manifest.mjs",
-    "Get-AuthenticodeSignature"
+    "Get-AuthenticodeSignature",
+    "TimeStamperCertificate"
   ]) {
     requireValue(workflow.includes(marker), `Windows CI workflow is missing: ${marker}`);
   }

@@ -40,6 +40,7 @@ Get-AuthenticodeSignature .\CppInsight-AI-setup.exe | Format-List
 ```
 
 状态必须为 `Valid`，签名主体必须与发行方一致。
+工作流还会拒绝缺少 `TimeStamperCertificate` 的安装包，避免证书过期后历史制品无法验证。
 
 ## 更新器签名不是 Authenticode
 

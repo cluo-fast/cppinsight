@@ -194,6 +194,9 @@ jobs:
                 $signature.SignerCertificate.Thumbprint -ne $env:CPPINSIGHT_SIGNING_THUMBPRINT) {
               throw "Unexpected signer certificate on $($installer.Name)"
             }
+            if ($null -eq $signature.TimeStamperCertificate) {
+              throw "Missing Authenticode timestamp on $($installer.Name)"
+            }
           }
 
       - name: Generate SHA-256 manifest
