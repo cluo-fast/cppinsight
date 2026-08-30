@@ -12,7 +12,7 @@ import {
   nodeColor,
   shortLabel
 } from "./graphSnapshot";
-import { createGraphRequest, mergeGraphResponses } from "./graphWorkbenchState";
+import { createGraphRequest, mergeGraphResponses, reconcileGraphScope } from "./graphWorkbenchState";
 import type {
   GraphConfidence,
   GraphDirection,
@@ -144,8 +144,9 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }, [hiddenNodeIds, selectedId]);
 
   useEffect(() => {
-    const scopeChanged = graphScopeRef.current.root !== root || graphScopeRef.current.projectId !== projectId;
-    if (scopeChanged) {
+    const scope = reconcileGraphScope(graphScopeRef.current, { root, projectId });
+    if (scope.changed) {
+      graphScopeRef.current = scope.scope;
       // A navigation request from the previous project must not be replayed
       // against the new index. Keep the current view kind, but drop its scope.
       consumedGraphKindRef.current = requestedGraphKind ?? graphKind;
@@ -380,10 +381,6 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   useEffect(() => {
-    if (graphScopeRef.current.root !== root || graphScopeRef.current.projectId !== projectId) {
-      graphScopeRef.current = { root, projectId };
-      return;
-    }
     if (
       (requestedGraphKind &&
         consumedGraphKindRef.current !== requestedGraphKind &&

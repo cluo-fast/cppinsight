@@ -62,3 +62,26 @@ test("graph response merger keeps unique entities while adopting the latest page
     evidence: [{ id: "ev1" }, { id: "ev2" }]
   });
 });
+
+test("graph scope reconciliation adopts a new project before its first query", () => {
+  assert.deepEqual(
+    state.reconcileGraphScope(
+      { root: "C:/old-project", projectId: 7 },
+      { root: "C:/new-project", projectId: 9 }
+    ),
+    {
+      changed: true,
+      scope: { root: "C:/new-project", projectId: 9 }
+    }
+  );
+  assert.deepEqual(
+    state.reconcileGraphScope(
+      { root: "C:/new-project", projectId: 9 },
+      { root: "C:/new-project", projectId: 9 }
+    ),
+    {
+      changed: false,
+      scope: { root: "C:/new-project", projectId: 9 }
+    }
+  );
+});

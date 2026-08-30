@@ -5,6 +5,21 @@ import type {
   GraphQueryResponse
 } from "./types";
 
+export interface GraphScope {
+  root: string;
+  projectId: number;
+}
+
+export function reconcileGraphScope(current: GraphScope, next: GraphScope): {
+  changed: boolean;
+  scope: GraphScope;
+} {
+  return {
+    changed: current.root !== next.root || current.projectId !== next.projectId,
+    scope: next
+  };
+}
+
 export function createGraphRequest(
   projectId: number,
   graphKind: GraphQueryRequest["graph_kind"],
