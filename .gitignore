@@ -1,4 +1,5 @@
 /build/
+/build-release/
 /build-codex/
 /build-graph-data/
 /.worktrees/
