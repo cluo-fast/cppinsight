@@ -293,6 +293,35 @@ void testCompileCommandsRelativeDirectoryIsAnchoredToDatabase() {
     std::filesystem::remove_all(root);
 }
 
+void testCompileCommandsArgumentsArrayResolvesIncludes() {
+    const std::filesystem::path root = makeFixtureRoot();
+    const std::filesystem::path compileCommands = root / "compile_commands.json";
+    std::ofstream output(compileCommands);
+    output << "[\n"
+           << "  {\n"
+           << "    \"directory\": \".\",\n"
+           << "    \"arguments\": [\"c++\", \"-Iinclude\", \"-c\", \"src/main.cpp\"],\n"
+           << "    \"file\": \"src/main.cpp\"\n"
+           << "  }\n"
+           << "]\n";
+    output.close();
+
+    cppinsight::ScanOptions options;
+    options.compileCommandsPath = compileCommands;
+    options.showProgress = false;
+    const cppinsight::ScanResult result = cppinsight::ProjectScanner().scan(root, options);
+
+    bool foundResolved = false;
+    for (const cppinsight::IncludeInfo& include : result.includes) {
+        if (include.target == "widget.h" && include.resolved) {
+            foundResolved = true;
+        }
+    }
+    require(foundResolved, "arguments array should resolve local include");
+
+    std::filesystem::remove_all(root);
+}
+
 void testJsonWriterEscapesAndEmitsAnalysisContract() {
     cppinsight::ScanResult result;
     result.rootPath = "quote\"root";
@@ -481,6 +510,7 @@ int main() {
         testIncrementalReuse();
         testCompileCommandsHybridMode();
         testCompileCommandsRelativeDirectoryIsAnchoredToDatabase();
+        testCompileCommandsArgumentsArrayResolvesIncludes();
         testJsonWriterEscapesAndEmitsAnalysisContract();
         testScannerEmitsStableOwnedGraphFacts();
         testScannerFiltersConstructionNoise();

@@ -89,6 +89,74 @@ bool extractJsonStringField(
     return false;
 }
 
+std::vector<std::string> extractJsonStringArrayField(
+    const std::string& objectText,
+    const std::string& fieldName) {
+    const std::string pattern = "\"" + fieldName + "\"";
+    std::size_t cursor = objectText.find(pattern);
+    if (cursor == std::string::npos) {
+        return {};
+    }
+
+    cursor = objectText.find('[', cursor + pattern.size());
+    if (cursor == std::string::npos) {
+        return {};
+    }
+
+    std::vector<std::string> values;
+    ++cursor;
+    while (cursor < objectText.size()) {
+        while (cursor < objectText.size() &&
+               (std::isspace(static_cast<unsigned char>(objectText[cursor])) != 0 ||
+                objectText[cursor] == ',')) {
+            ++cursor;
+        }
+        if (cursor >= objectText.size() || objectText[cursor] == ']') {
+            break;
+        }
+        if (objectText[cursor] != '"') {
+            return {};
+        }
+
+        const std::size_t start = ++cursor;
+        std::size_t end = start;
+        while (end < objectText.size()) {
+            if (objectText[end] == '\\') {
+                end += 2;
+                continue;
+            }
+            if (objectText[end] == '"') {
+                break;
+            }
+            ++end;
+        }
+        if (end >= objectText.size()) {
+            return {};
+        }
+        values.push_back(unescapeJsonString(objectText.substr(start, end - start)));
+        cursor = end + 1;
+    }
+    return values;
+}
+
+std::string joinCommandArguments(const std::vector<std::string>& arguments) {
+    std::string command;
+    for (const std::string& argument : arguments) {
+        if (!command.empty()) {
+            command.push_back(' ');
+        }
+        const bool needsQuotes = argument.find_first_of(" \t") != std::string::npos;
+        if (needsQuotes) {
+            command.push_back('"');
+        }
+        command += argument;
+        if (needsQuotes) {
+            command.push_back('"');
+        }
+    }
+    return command;
+}
+
 std::vector<std::string> splitCommand(const std::string& command) {
     std::vector<std::string> tokens;
     std::string current;
@@ -204,9 +272,18 @@ CompileCommandsDatabase CompileCommandsLoader::load(const std::filesystem::path&
             continue;
         }
         extractJsonStringField(objectText, "directory", directoryValue);
-        extractJsonStringField(objectText, "command", commandValue);
-        if (commandValue.empty()) {
-            extractJsonStringField(objectText, "arguments", commandValue);
+        const bool hasCommand = extractJsonStringField(objectText, "command", commandValue);
+        if (!hasCommand || commandValue.empty()) {
+            const std::vector<std::string> arguments =
+                extractJsonStringArrayField(objectText, "arguments");
+            if (!arguments.empty()) {
+                commandValue = joinCommandArguments(arguments);
+            } else if (!hasCommand) {
+                // Keep accepting the historical string form used by a few
+                // generators even though the compile_commands standard calls
+                // for an array here.
+                extractJsonStringField(objectText, "arguments", commandValue);
+            }
         }
 
         CompileCommandEntry entry;
