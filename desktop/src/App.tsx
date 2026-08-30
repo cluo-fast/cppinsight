@@ -22,7 +22,7 @@ import {
 } from "./api";
 import GraphWorkbench from "./GraphWorkbench";
 import { summaryAsHtml } from "./reportHtml";
-import { BROWSER_PREVIEW_MESSAGE, desktopActionMessage, isTauriRuntime } from "./runtime";
+import { BROWSER_PREVIEW_MESSAGE, desktopActionMessage, isDesktopActionDisabled, isTauriRuntime } from "./runtime";
 import type {
   AskResponse,
   ChatMessage,
@@ -1073,7 +1073,7 @@ export default function App() {
           <span>C/C++ 项目摸底</span>
         </div>
         <div className="topbar-actions">
-          <button disabled={anyIndexing} onClick={() => void openProject()}>
+          <button disabled={anyIndexing || isDesktopActionDisabled()} onClick={() => void openProject()}>
             {sessions.length > 0 ? "打开其他项目" : "打开项目"}
           </button>
           {active ? (
@@ -1088,6 +1088,7 @@ export default function App() {
           ) : null}
           <button
             className="secondary"
+            disabled={isDesktopActionDisabled()}
             onClick={() => {
               void (async () => {
                 const next = !showSettings;

@@ -14,3 +14,7 @@ export function isTauriRuntime(): boolean {
 export function desktopActionMessage(): string | null {
   return isTauriRuntime() ? null : BROWSER_PREVIEW_MESSAGE;
 }
+
+export function isDesktopActionDisabled(): boolean {
+  return desktopActionMessage() !== null;
+}
