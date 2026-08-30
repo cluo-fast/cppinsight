@@ -21,7 +21,7 @@ import {
   setOpenAiSettings
 } from "./api";
 import GraphWorkbench from "./GraphWorkbench";
-import { aiModeLabel, askContextDescription, canSaveAiSettings } from "./aiMode";
+import { aiModeLabel, askContextDescription, askPreviewCopy, canSaveAiSettings } from "./aiMode";
 import { summaryAsHtml } from "./reportHtml";
 import { BROWSER_PREVIEW_MESSAGE, desktopActionMessage, isDesktopActionDisabled, isTauriRuntime } from "./runtime";
 import type {
@@ -896,7 +896,7 @@ export default function App() {
     const chatId = activeChat.id;
     setAskPreviewBusy(true);
     setError(null);
-    setStatus("正在整理将发送的代码片段…");
+    setStatus(askPreviewCopy(aiSettings.ai_enabled).status);
     try {
       const citations = await previewAskContext(active.overview.root, active.overview.project_id, trimmed);
       if (activeRootRef.current !== sessionId) {
@@ -1160,7 +1160,7 @@ export default function App() {
             OPENAI_BASE_URL / OPENAI_API_KEY / OPENAI_MODEL 优先于此处保存的值。
           </p>
           <p className="settings-privacy-note">
-            扫描、索引和关系图默认只在本机运行；只有主动提问时才会发送所选上下文。诊断导出会先脱敏预览，不包含源码、绝对路径或密钥。
+            扫描、索引和关系图默认只在本机运行；{aiSettings.ai_enabled ? "只有主动提问时才会发送所选上下文。" : "当前仅返回本地检索结果，不会向模型发送内容。"}诊断导出会先脱敏预览，不包含源码、绝对路径或密钥。
           </p>
           <label className="settings-field">
             <span>AI 模式</span>
@@ -1832,9 +1832,13 @@ export default function App() {
                   </p>
                 )}
                 {pendingAsk && pendingAsk.sessionId === active.id && pendingAsk.chatId === activeChat.id ? (
-                  <div className="ask-context-preview" role="dialog" aria-label="发送前上下文预览">
+                  <div
+                    className="ask-context-preview"
+                    role="dialog"
+                    aria-label={askPreviewCopy(aiSettings.ai_enabled).ariaLabel}
+                  >
                     <div>
-                      <strong>发送前确认上下文</strong>
+                      <strong>{askPreviewCopy(aiSettings.ai_enabled).title}</strong>
                       <p className="muted">
                         {askContextDescription(aiSettings.ai_enabled, pendingAsk.citations.length)}
                       </p>
@@ -1848,14 +1852,14 @@ export default function App() {
                         ))}
                       </ul>
                     ) : (
-                      <p className="muted">没有找到匹配源码片段；不会向模型发送源码上下文。</p>
+                      <p className="muted">{askPreviewCopy(aiSettings.ai_enabled).empty}</p>
                     )}
                     <div className="ask-context-actions">
                       <button type="button" className="secondary" onClick={() => setPendingAsk(null)}>
                         取消
                       </button>
                       <button type="button" onClick={confirmPendingAsk}>
-                        确认发送
+                        {askPreviewCopy(aiSettings.ai_enabled).confirm}
                       </button>
                     </div>
                   </div>

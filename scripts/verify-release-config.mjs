@@ -221,7 +221,6 @@ requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app sh
   "提交反馈",
   "settings-privacy-note",
   "previewAskContext",
-  "发送前确认上下文",
   "getVersion",
   "未找到 compile_commands.json",
   "requestedGraphNodeId",
@@ -242,6 +241,8 @@ requireTextMarkers(path.join(root, "desktop", "src", "aiMode.ts"), "AI local-onl
   "aiModeLabel",
   "canSaveAiSettings",
   "askContextDescription",
+  "发送前确认上下文",
+  "本地检索结果",
   "AI 已关闭，仅本地分析",
   "只发送下列文件和行号范围"
 ]);
