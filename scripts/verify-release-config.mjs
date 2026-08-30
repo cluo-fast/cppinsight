@@ -223,6 +223,9 @@ requireTextMarkers(path.join(root, "desktop", "src", "GraphWorkbench.tsx"), "gra
   "按页加载",
   "response.groups.length"
 ]);
+requireTextMarkers(path.join(root, "desktop", "src", "graphWorkbenchState.ts"), "GraphWorkbench scope state", [
+  "reconcileGraphScope"
+]);
 requireTextMarkers(path.join(root, "desktop", "src-tauri", "src", "lib.rs"), "client summary generator", [
   "## Build context",
   "## First 1-3 days",
@@ -254,6 +257,9 @@ requireTextMarkers(path.join(root, "scripts", "benchmark-graph.ps1"), "graph ben
   "project_name"
 ]);
 requireFile(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot regression test");
+requireTextMarkers(path.join(root, "scripts", "graph-snapshot.test.mjs"), "graph snapshot coverage", [
+  "covers every first-release graph kind"
+]);
 requireFile(path.join(root, "desktop", "src", "graphSnapshot.ts"), "graph snapshot renderer");
 requireFile(path.join(root, "scripts", "graph-workbench-state.test.mjs"), "GraphWorkbench state regression test");
 requireFile(path.join(root, "desktop", "src", "graphWorkbenchState.ts"), "GraphWorkbench state helpers");
