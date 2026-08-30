@@ -24,6 +24,8 @@ powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 
 首个推送后的 Windows CI 才是 MSI/NSIS 构建成功的权威证据；macOS 或 Linux 本地构建不能替代这一步。
 
+每次候选或公开测试发布都应复制并填写 [发布说明模板](release-notes-template.md)，记录提交 SHA、CI 证据、性能、已知限制、隐私、制品哈希和回滚版本。
+
 ## Authenticode 签名
 
 将 PFX 证书和密码配置为 GitHub Actions repository secrets：

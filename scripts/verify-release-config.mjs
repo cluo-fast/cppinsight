@@ -193,6 +193,15 @@ requireTextMarkers(path.join(root, "docs", "licensing.md"), "license boundary do
   "desktop/",
   "第三方声明"
 ]);
+requireFile(path.join(root, "docs", "release-notes-template.md"), "release notes template");
+requireTextMarkers(path.join(root, "docs", "release-notes-template.md"), "release notes template", [
+  "源码提交 SHA",
+  "性能实测",
+  "已知限制与解析器边界",
+  "隐私与安全",
+  "SHA-256",
+  "回滚版本"
+]);
 requireTextMarkers(path.join(root, "desktop", "src", "App.tsx"), "desktop app shell", [
   "提交反馈",
   "settings-privacy-note",

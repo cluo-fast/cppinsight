@@ -1,0 +1,70 @@
+# CppInsight AI v0.1.0 — Windows 公开测试说明（模板）
+
+> 这份模板必须在 Windows 制品、干净虚拟机、基准机和授权文件都完成后填写。未填完时，发布名称只能是“内部测试构建”或“候选构建”，不能称为正式公开测试版。
+
+## 发布元数据
+
+- 发布渠道：`内部测试 / 候选构建 / 公开测试版`
+- 应用版本：`0.1.0`
+- 源码提交 SHA：`<commit-sha>`
+- Windows CI 运行地址：`<workflow-url>`
+- 回滚版本：`<last-known-good-version>`
+- 发布日期：`<YYYY-MM-DD>`
+
+## 本版内容
+
+- 自动生成本地项目接手报告，并提供模块、调用、类、包含和入口路径五类关系图。
+- GraphWorkbench 支持搜索、筛选、方向/深度、路径分析、循环与关键节点提示、布局保存和 SVG/PNG 导出。
+- AI 问答为可选能力；每次请求前会展示文件和行号范围，确认后才发送少量上下文。
+- 内置示例项目可在首次安装后直接体验扫描、报告和关系图。
+
+## 验证证据
+
+| 项目 | 结果/链接 |
+| --- | --- |
+| C++、Rust、前端和 MCP 测试 | `<test-summary>` |
+| Windows MSI/NSIS 安装、启动、卸载、重装 | `<installer-smoke-evidence>` |
+| 干净虚拟机回归 | `<clean-vm-evidence>` |
+| 五类图交互、布局和导出 | `<graph-ui-evidence>` |
+| 真实基准项目和准确率样本 | `<benchmark-evidence>` |
+| 许可证与第三方声明 | `<licensing-evidence>` |
+
+## 性能实测
+
+必须填写目标 Windows 基准机上的真实结果；不能用内置示例结果代替容量基准。
+
+| 指标 | 目标 | 实测 | 备注 |
+| --- | --- | --- | --- |
+| 首次索引（约 200 万行/2 万文件） | ≤ 5 分钟 | `<measured>` | `<machine-and-project>` |
+| 增量索引（≤ 100 个变更文件） | ≤ 30 秒 | `<measured>` | `<machine-and-project>` |
+| 再次打开完整索引 | ≤ 3 秒 | `<measured>` | `<machine-and-project>` |
+| 默认关系图首次查询/出图 | ≤ 2 秒 | `<measured>` | 五类图分别记录 |
+| 峰值内存 | ≤ 2 GB | `<measured>` | 记录工作集 |
+
+## 已知限制与解析器边界
+
+- 宏、模板、条件编译、函数指针、动态分派和不完整 `compile_commands.json` 可能降低关系置信度。
+- 没有编译数据库时会降级为启发式分析；报告和图谱会保留置信度、歧义和未解析关系。
+- 大图受 500 个可见节点上限保护，超限会返回原始规模、截断原因和 continuation；发布说明必须披露真实项目的分页或聚合体验。
+- AI 失败、未配置或关闭时，本地索引、报告和关系图仍应可用。
+
+## 隐私与安全
+
+- 源码和索引默认只保存在本机。
+- 只有用户主动确认 AI 请求后，所列文件行号范围内的少量片段才会发送到配置的端点。
+- API Key 使用 Windows Credential Manager 保存，不写入 SQLite。
+- 诊断导出应先预览，且不包含源码、绝对路径、聊天内容或密钥。
+- 安装包必须记录 SHA-256；签名制品必须验证 Authenticode 主体、时间戳和 SmartScreen 行为。
+
+## 制品校验与回滚
+
+```text
+<sha256>  CppInsight-AI-<version>-x64.msi
+<sha256>  CppInsight-AI-<version>-x64-setup.exe
+```
+
+- SHA-256 清单：`<artifact/SHA256SUMS.txt>`
+- 签名主体：`<certificate-subject>`
+- 时间戳证书：`<timestamp-certificate>`
+- 回滚制品与版本：`<last-known-good-artifact>`
+- 发现严重问题时，撤下当前下载入口，恢复回滚版本，并递增版本号重新构建；不要覆盖同版本制品。

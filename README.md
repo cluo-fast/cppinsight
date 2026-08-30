@@ -103,6 +103,7 @@ pnpm run check
 
 公开测试准备状态见 [公开测试准备清单](docs/public-beta-readiness.md)。
 许可证边界和发布前授权检查见 [许可证边界说明](docs/licensing.md)。
+发布时请复制并填写 [发布说明模板](docs/release-notes-template.md)，未填完前只能发布内部/候选构建。
 
 ## 反馈材料
 
