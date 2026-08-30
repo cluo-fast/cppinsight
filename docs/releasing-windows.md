@@ -26,6 +26,19 @@ powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 
 每次候选或公开测试发布都应复制并填写 [发布说明模板](release-notes-template.md)，记录提交 SHA、CI 证据、性能、已知限制、隐私、制品哈希和回滚版本。
 
+## 执行责任边界
+
+拿到 Windows runner 或远程 Windows 环境后，构建、安装/卸载/重装烟测、五类图交互、MCP 传输测试、示例项目回归和基准脚本均可由自动化流程执行；不需要手工逐项重复。
+
+项目所有者仍必须提供或确认以下外部条件：
+
+- GitHub Actions 的触发/写入权限，或可用的 Windows runner；
+- Authenticode PFX/Azure Artifact Signing 账户及其 CI secret；
+- 版权主体、核心/桌面许可证和第三方声明；
+- 真实基准项目的 revision、许可证和人工准确率样本。
+
+代理负责接入这些配置、运行校验、整理证据和生成发布说明，但不会代替所有者创建可信签名身份或作出法律授权决定。
+
 ## Authenticode 签名
 
 将 PFX 证书和密码配置为 GitHub Actions repository secrets：
