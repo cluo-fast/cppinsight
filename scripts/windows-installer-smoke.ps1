@@ -63,6 +63,7 @@ function Assert-AppStarts([string]$Executable, [string]$Flavor) {
     finally {
         if (-not $process.HasExited) {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+            [void]$process.WaitForExit(5000)
         }
     }
 }
