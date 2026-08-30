@@ -10,7 +10,7 @@ CppInsight AI 的 Windows 安装包由 Windows runner 原生构建。仓库可�
 powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 ```
 
-脚本会构建并测试 C++ 扫描器、复制 `cppinsight.exe`、按 `desktop/pnpm-lock.yaml` 安装依赖、执行完整前端/Rust `pnpm run check`、验证发布配置，并生成 NSIS 与 MSI 安装包及 `SHA256SUMS.txt`。生成后会用仓库内的 `scripts/verify-sha256-manifest.mjs` 重新读取制品并校验哈希、路径安全和清单完整性。无签名安装包可用于内部测试，但从浏览器下载后可能触发 Windows SmartScreen 警告。
+脚本会构建并测试 C++ 扫描器、复制 `cppinsight.exe`、按 `desktop/pnpm-lock.yaml` 安装依赖、执行完整前端/Rust `pnpm run check`、构建 Release `cppinsight-workbench` CLI、验证发布配置，并生成 NSIS 与 MSI 安装包及 `SHA256SUMS.txt`。生成后会用仓库内的 `scripts/verify-sha256-manifest.mjs` 重新读取制品并校验哈希、路径安全和清单完整性。无签名安装包可用于内部测试，但从浏览器下载后可能触发 Windows SmartScreen 警告。
 
 ## GitHub Actions
 

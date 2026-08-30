@@ -45,6 +45,9 @@ finally {
     Pop-Location
 }
 
+& cargo build --manifest-path (Join-Path $RepoRoot "desktop/src-tauri/Cargo.toml") --release --bin cppinsight-workbench
+if ($LASTEXITCODE -ne 0) { throw "Release Workbench CLI build failed" }
+
 $BundleRoot = Join-Path $RepoRoot "desktop/src-tauri/target/release/bundle"
 $Installers = Get-ChildItem -LiteralPath $BundleRoot -Recurse -File |
     Where-Object { $_.Extension -eq ".msi" -or $_.Name.EndsWith("-setup.exe") }

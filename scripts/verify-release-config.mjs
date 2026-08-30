@@ -101,7 +101,8 @@ requireTextMarkers(path.join(root, "scripts", "package-app.ps1"), "package scrip
   "Get-FileHash",
   "SHA256SUMS.txt",
   "verify-sha256-manifest.mjs",
-  "pnpm run check"
+  "pnpm run check",
+  "--bin cppinsight-workbench"
 ]);
 requireFile(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script");
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
