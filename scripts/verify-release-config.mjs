@@ -134,6 +134,8 @@ if (existsSync(windowsWorkflowPath)) {
     "file_includes",
     "entry_paths",
     "cppinsight-workbench.exe index",
+    "Build release Workbench CLI",
+    "cargo build --manifest-path desktop/src-tauri/Cargo.toml --release --bin cppinsight-workbench",
     "Upload Windows installers",
     "Smoke test MSI and NSIS installers",
     "windows-installer-smoke.ps1",

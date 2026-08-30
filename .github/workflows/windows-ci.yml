@@ -137,6 +137,10 @@ jobs:
             pnpm tauri build
           }
 
+      - name: Build release Workbench CLI
+        shell: pwsh
+        run: cargo build --manifest-path desktop/src-tauri/Cargo.toml --release --bin cppinsight-workbench
+
       - name: Verify bundled sample scan and graph query
         shell: pwsh
         run: |
