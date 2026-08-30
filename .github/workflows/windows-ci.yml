@@ -52,7 +52,14 @@ jobs:
           cmake --build build-release --config Release
           ctest --test-dir build-release -C Release --output-on-failure
           New-Item -ItemType Directory -Force desktop/src-tauri/resources | Out-Null
-          Copy-Item build-release/Release/cppinsight.exe desktop/src-tauri/resources/cppinsight.exe -Force
+          $scanner = @(
+            "build-release/Release/cppinsight.exe",
+            "build-release/cppinsight.exe"
+          ) | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if ([string]::IsNullOrWhiteSpace($scanner)) {
+            throw "cppinsight.exe was not produced in build-release"
+          }
+          Copy-Item $scanner desktop/src-tauri/resources/cppinsight.exe -Force
 
       - name: Install locked frontend dependencies
         working-directory: desktop

@@ -134,6 +134,8 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm run test:benchmark-corpus",
     "pnpm tauri build",
     "Verify bundled sample scan and graph query",
+    "build-release/cppinsight.exe",
+    "cppinsight.exe was not produced in build-release",
     "examples/sample-cpp",
     "module_dependencies",
     "function_calls",
