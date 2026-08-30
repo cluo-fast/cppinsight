@@ -211,6 +211,10 @@ CompileCommandsDatabase CompileCommandsLoader::load(const std::filesystem::path&
 
         CompileCommandEntry entry;
         entry.directory = directoryValue.empty() ? path.parent_path() : std::filesystem::path(directoryValue);
+        if (entry.directory.is_relative()) {
+            entry.directory = path.parent_path() / entry.directory;
+        }
+        entry.directory = std::filesystem::weakly_canonical(entry.directory);
         entry.file = std::filesystem::path(fileValue);
         if (entry.file.is_relative()) {
             entry.file = entry.directory / entry.file;

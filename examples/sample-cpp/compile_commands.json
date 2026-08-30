@@ -1,0 +1,17 @@
+[
+  {
+    "directory": ".",
+    "command": "c++ -Iinclude -std=c++17 -c src/main.cpp -o src/main.o",
+    "file": "src/main.cpp"
+  },
+  {
+    "directory": ".",
+    "command": "c++ -Iinclude -std=c++17 -c src/engine.cpp -o src/engine.o",
+    "file": "src/engine.cpp"
+  },
+  {
+    "directory": ".",
+    "command": "c++ -Iinclude -std=c++17 -c src/worker.cpp -o src/worker.o",
+    "file": "src/worker.cpp"
+  }
+]

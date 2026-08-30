@@ -263,6 +263,36 @@ void testCompileCommandsHybridMode() {
     std::filesystem::remove_all(root);
 }
 
+void testCompileCommandsRelativeDirectoryIsAnchoredToDatabase() {
+    const std::filesystem::path root = makeFixtureRoot();
+    const std::filesystem::path compileCommands = root / "compile_commands.json";
+    std::ofstream output(compileCommands);
+    output << "[\n"
+           << "  {\n"
+           << "    \"directory\": \".\",\n"
+           << "    \"command\": \"c++ -Iinclude -c src/main.cpp\",\n"
+           << "    \"file\": \"src/main.cpp\"\n"
+           << "  }\n"
+           << "]\n";
+    output.close();
+
+    cppinsight::ScanOptions options;
+    options.compileCommandsPath = compileCommands;
+    options.showProgress = false;
+    const cppinsight::ScanResult result = cppinsight::ProjectScanner().scan(root, options);
+    require(result.mode == "hybrid", "relative compile_commands should enable hybrid mode");
+
+    bool foundResolved = false;
+    for (const cppinsight::IncludeInfo& include : result.includes) {
+        if (include.target == "widget.h" && include.resolved) {
+            foundResolved = true;
+        }
+    }
+    require(foundResolved, "relative compile_commands directory should resolve local include");
+
+    std::filesystem::remove_all(root);
+}
+
 void testJsonWriterEscapesAndEmitsAnalysisContract() {
     cppinsight::ScanResult result;
     result.rootPath = "quote\"root";
@@ -450,6 +480,7 @@ int main() {
         testOverviewDetectsEntryAndModules();
         testIncrementalReuse();
         testCompileCommandsHybridMode();
+        testCompileCommandsRelativeDirectoryIsAnchoredToDatabase();
         testJsonWriterEscapesAndEmitsAnalysisContract();
         testScannerEmitsStableOwnedGraphFacts();
         testScannerFiltersConstructionNoise();

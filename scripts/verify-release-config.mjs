@@ -105,6 +105,10 @@ requireTextMarkers(path.join(root, "scripts", "package-app.ps1"), "package scrip
 ]);
 requireFile(path.join(root, "scripts", "windows-installer-smoke.ps1"), "Windows installer smoke script");
 requireFile(path.join(root, "启动CppInsight.bat"), "Windows launcher");
+requireFile(
+  path.join(root, "examples", "sample-cpp", "compile_commands.json"),
+  "bundled sample compile database"
+);
 
 const windowsWorkflowPath = path.join(root, ".github", "workflows", "windows-ci.yml");
 if (existsSync(windowsWorkflowPath)) {
@@ -124,6 +128,11 @@ if (existsSync(windowsWorkflowPath)) {
     "pnpm tauri build",
     "Verify bundled sample scan and graph query",
     "examples/sample-cpp",
+    "module_dependencies",
+    "function_calls",
+    "class_relations",
+    "file_includes",
+    "entry_paths",
     "cppinsight-workbench.exe index",
     "Upload Windows installers",
     "Smoke test MSI and NSIS installers",

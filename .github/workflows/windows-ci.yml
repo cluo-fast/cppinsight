@@ -145,14 +145,23 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Bundled sample scan failed" }
           & desktop/src-tauri/target/release/cppinsight-workbench.exe index $scanPath --db examples/sample-cpp/.cppinsight/index.sqlite
           if ($LASTEXITCODE -ne 0) { throw "Bundled sample index write failed" }
-          $request = @'
-          {"protocol_version":1,"project_id":0,"graph_kind":"function_calls","root_node_ids":[],"direction":"both","depth":2,"filters":{},"max_nodes":500,"path_target":null,"continuation":null}
-          '@
-          $responseText = $request | & desktop/src-tauri/target/release/cppinsight-workbench.exe graph --root examples/sample-cpp --request -
-          if ($LASTEXITCODE -ne 0) { throw "Bundled sample graph query failed" }
-          $response = $responseText | ConvertFrom-Json
-          if ($response.protocol_version -ne 1 -or $response.statistics.returned_node_count -lt 1) {
-            throw "Bundled sample graph response was empty or invalid"
+          $graphKinds = @(
+            "module_dependencies",
+            "function_calls",
+            "class_relations",
+            "file_includes",
+            "entry_paths"
+          )
+          foreach ($graphKind in $graphKinds) {
+            $request = "{`"protocol_version`":1,`"project_id`":0,`"graph_kind`":`"$graphKind`",`"root_node_ids`":[],`"direction`":`"both`",`"depth`":2,`"filters`":{},`"max_nodes`":500,`"path_target`":null,`"continuation`":null}"
+            $responseText = $request | & desktop/src-tauri/target/release/cppinsight-workbench.exe graph --root examples/sample-cpp --request -
+            if ($LASTEXITCODE -ne 0) { throw "Bundled sample $graphKind graph query failed" }
+            $response = $responseText | ConvertFrom-Json
+            if ($response.protocol_version -ne 1 -or
+                $response.statistics.returned_node_count -lt 1 -or
+                $response.statistics.returned_edge_count -lt 1) {
+              throw "Bundled sample $graphKind graph response was empty or invalid"
+            }
           }
 
       - name: Verify bundled sample graph benchmark

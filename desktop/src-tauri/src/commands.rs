@@ -30,7 +30,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Manager, State};
 
-const SAMPLE_PROJECT_MARKER: &str = ".cppinsight-sample-v1";
+const SAMPLE_PROJECT_MARKER: &str = ".cppinsight-sample-v2";
 
 #[derive(Default)]
 pub struct IndexCancellation {
@@ -81,6 +81,13 @@ const SAMPLE_PROJECT_FILES: &[(&str, &str)] = &[
         include_str!(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../examples/sample-cpp/CMakeLists.txt"
+        )),
+    ),
+    (
+        "compile_commands.json",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../examples/sample-cpp/compile_commands.json"
         )),
     ),
     (
@@ -135,7 +142,7 @@ fn materialize_sample_project(root: &Path) -> Result<(), String> {
         fs::write(path, content)
             .map_err(|error| format!("write sample project file failed: {error}"))?;
     }
-    fs::write(marker, "CppInsight AI bundled sample project v1\n")
+    fs::write(marker, "CppInsight AI bundled sample project v2\n")
         .map_err(|error| format!("write sample project marker failed: {error}"))?;
     Ok(())
 }
@@ -146,7 +153,7 @@ pub fn prepare_sample_project(app: AppHandle) -> Result<String, String> {
         .path()
         .app_cache_dir()
         .map_err(|error| format!("failed to resolve sample project cache dir: {error}"))?;
-    let root = cache_dir.join("sample-project-v1");
+    let root = cache_dir.join("sample-project-v2");
     materialize_sample_project(&root)?;
     Ok(root.to_string_lossy().into_owned())
 }
@@ -592,6 +599,7 @@ mod tests {
         let directory = tempfile::tempdir().expect("temp directory");
         materialize_sample_project(directory.path()).expect("materialize sample");
         assert!(directory.path().join("CMakeLists.txt").is_file());
+        assert!(directory.path().join("compile_commands.json").is_file());
         assert!(directory.path().join("src/main.cpp").is_file());
         assert!(directory.path().join("include/sample/engine.hpp").is_file());
         let custom = directory.path().join("src/main.cpp");
