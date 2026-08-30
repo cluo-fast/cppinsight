@@ -30,7 +30,7 @@
 - [x] Windows 制品 SHA-256 清单有跨平台校验器，拒绝绝对路径、路径穿越、重复条目、缺失文件和哈希不匹配。
 - [x] 图基准结果校验器覆盖五类图、median/规模一致性和路径隐私；Windows CI 会对内置示例执行三轮基准烟测。
 - [x] 质量基准候选清单固定 10 个项目并有结构校验；revision、许可证复核、人工准确率样本和真实结果仍待目标环境完成。
-- [x] MCP SDK 安装后运行 `npm test` 通过（3/3），无 SDK 的核心契约测试也可独立运行。
+- [x] MCP SDK 安装后运行 `npm test` 通过（4/4，含真实 stdio initialize/tools/list 握手），无 SDK 的核心契约测试也可独立运行。
 - [x] Windows CI 已接入 MSI/NSIS 安装、启动、卸载烟测脚本；待首个 Windows runner 运行产生证据。
 - [ ] 核心/桌面许可证边界、版权主体、第三方声明和正式授权文件已由项目所有者确认（见 [`docs/licensing.md`](licensing.md)）。
 

@@ -261,6 +261,10 @@ requireFile(path.join(root, "scripts", "verify-benchmark-result.test.mjs"), "ben
 requireFile(path.join(root, "docs", "benchmarks", "corpus.json"), "benchmark corpus manifest");
 requireFile(path.join(root, "scripts", "verify-benchmark-corpus.mjs"), "benchmark corpus verifier");
 requireFile(path.join(root, "scripts", "verify-benchmark-corpus.test.mjs"), "benchmark corpus verifier test");
+requireFile(
+  path.join(root, "tools", "mcp-server", "test", "transport.test.mjs"),
+  "MCP SDK stdio transport test"
+);
 
 if (failures.length > 0) {
   console.error(failures.join("\n"));

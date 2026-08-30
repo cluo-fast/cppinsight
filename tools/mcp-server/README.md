@@ -19,6 +19,8 @@ cd tools/mcp-server
 npm ci
 ```
 
+安装依赖后运行 `npm test` 会启动真实 SDK stdio 服务，完成 `initialize` 和 `tools/list` 握手，并另外覆盖图查询参数转换与错误传递。
+
 协议转换的无 SDK 契约测试可在受限环境直接运行：
 
 ```powershell
