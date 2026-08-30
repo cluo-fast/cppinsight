@@ -11,6 +11,11 @@ function fail(message) {
   throw new Error(message);
 }
 
+export function manifestPathKey(filePath, caseInsensitive = process.platform === "win32") {
+  const normalized = path.normalize(filePath);
+  return caseInsensitive ? normalized.toLowerCase() : normalized;
+}
+
 function resolveManifestPath(root, relativePath) {
   const normalized = relativePath.replaceAll("\\", "/");
   if (!normalized || normalized.startsWith("/") || /^[a-z]:\//i.test(normalized)) {
@@ -51,7 +56,7 @@ export async function verifyManifest(manifestPath) {
     if (!match) fail(`invalid manifest line ${index + 1}`);
     const [, expected, relativePath] = match;
     const filePath = resolveManifestPath(root, relativePath);
-    const key = path.normalize(filePath);
+    const key = manifestPathKey(filePath);
     if (seen.has(key)) fail(`duplicate manifest entry: ${relativePath}`);
     seen.add(key);
     entries.push({ expected: expected.toLowerCase(), filePath, relativePath });

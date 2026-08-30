@@ -5,7 +5,7 @@ import path from "node:path";
 import test from "node:test";
 import { createHash } from "node:crypto";
 
-import { verifyManifest } from "./verify-sha256-manifest.mjs";
+import { manifestPathKey, verifyManifest } from "./verify-sha256-manifest.mjs";
 
 async function withFixture(run) {
   const root = await mkdtemp(path.join(os.tmpdir(), "cppinsight-sha256-"));
@@ -56,4 +56,15 @@ test("SHA-256 manifest rejects mismatches, duplicate entries, and unsafe paths",
     await writeFile(manifest, `${digest("actual")}  C:\\\\outside.msi\n`);
     await assert.rejects(() => verifyManifest(manifest), /unsafe manifest path/);
   });
+});
+
+test("manifest duplicate keys can model Windows case-insensitive paths", () => {
+  assert.equal(
+    manifestPathKey("C:/bundle/CppInsight-AI.msi", true),
+    manifestPathKey("c:/BUNDLE/cppinsight-ai.msi", true)
+  );
+  assert.notEqual(
+    manifestPathKey("/tmp/Bundle/CppInsight-AI.msi", false),
+    manifestPathKey("/tmp/bundle/cppinsight-ai.msi", false)
+  );
 });
