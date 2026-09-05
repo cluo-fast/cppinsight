@@ -16,7 +16,15 @@ function Assert-ExitCode([System.Diagnostics.Process]$Process, [string]$Action) 
 }
 
 function Invoke-Installer([string]$FilePath, [string[]]$Arguments, [string]$Action) {
-    $process = Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
+    $argumentString = ($Arguments | ForEach-Object {
+        $argument = [string]$_
+        if ($argument -match '[\s"]') {
+            '"' + $argument.Replace('"', '\"') + '"'
+        } else {
+            $argument
+        }
+    }) -join ' '
+    $process = Start-Process -FilePath $FilePath -ArgumentList $argumentString -Wait -PassThru -WindowStyle Hidden
     Assert-ExitCode $process $Action
 }
 
@@ -69,8 +77,8 @@ function Assert-AppStarts([string]$Executable, [string]$Flavor) {
 }
 
 $resolvedBundleRoot = (Resolve-Path -LiteralPath $BundleRoot).Path
-$msi = Get-ChildItem -LiteralPath $resolvedBundleRoot -Filter "*.msi" -File | Select-Object -First 1
-$nsis = Get-ChildItem -LiteralPath $resolvedBundleRoot -Filter "*-setup.exe" -File | Select-Object -First 1
+$msi = Get-ChildItem -LiteralPath $resolvedBundleRoot -Recurse -Filter "*.msi" -File | Select-Object -First 1
+$nsis = Get-ChildItem -LiteralPath $resolvedBundleRoot -Recurse -Filter "*-setup.exe" -File | Select-Object -First 1
 if ($null -eq $msi -or $null -eq $nsis) {
     throw "Expected one MSI and one NSIS installer under $resolvedBundleRoot"
 }

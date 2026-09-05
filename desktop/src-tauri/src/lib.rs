@@ -3331,7 +3331,10 @@ pub fn build_client_summary(connection: &Connection, project_id: i64) -> Result<
     let mut modules: Vec<_> = overview.second_level_layout.iter().collect();
     modules.sort_by(|left, right| right.1.cmp(left.1).then(left.0.cmp(right.0)));
     for (path, count) in modules.into_iter().take(8) {
-        output.push_str(&format!("- `{path}`: {count} files\n"));
+        output.push_str(&format!(
+            "- `{}`: {count} files\n",
+            report_path(&overview.root, path)
+        ));
     }
     output.push('\n');
 

@@ -56,7 +56,7 @@ if ($Installers.Count -lt 2) {
 }
 $Checksums = foreach ($Installer in $Installers) {
     $Hash = (Get-FileHash -LiteralPath $Installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-    $Relative = [IO.Path]::GetRelativePath($BundleRoot, $Installer.FullName)
+    $Relative = ($Installer.FullName.Substring($BundleRoot.Length) -replace '^[\\/]+', '')
     "$Hash  $Relative"
 }
 $ManifestPath = Join-Path $BundleRoot "SHA256SUMS.txt"

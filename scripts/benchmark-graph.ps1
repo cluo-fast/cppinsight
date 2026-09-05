@@ -134,7 +134,11 @@ $report = [ordered]@{
 }
 $json = $report | ConvertTo-Json -Depth 8
 if ($OutputPath) {
-    $json | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+    [System.IO.File]::WriteAllText(
+        [System.IO.Path]::GetFullPath($OutputPath),
+        $json,
+        [System.Text.UTF8Encoding]::new($false)
+    )
     Write-Output "Wrote $OutputPath"
 } else {
     Write-Output $json
