@@ -127,6 +127,7 @@ if (existsSync(windowsWorkflowPath)) {
   const workflow = readFileSync(windowsWorkflowPath, "utf8");
   for (const marker of [
     "windows-latest",
+    "branches: [main, 'codex/**']",
     "ctest",
     "cargo test",
     "pnpm run build",
