@@ -14,9 +14,22 @@ Assert-Command "cmake" "cmake not found. Install CMake 3.16 or newer."
 Assert-Command "cargo" "cargo not found. Install Rust from https://rustup.rs."
 Assert-Command "pnpm" "pnpm not found. Install pnpm 11.19 or newer."
 
-cmake -S $RepoRoot -B $BuildDir -DCMAKE_BUILD_TYPE=Release
+cmake -S $RepoRoot -B $BuildDir -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed" }
 cmake --build $BuildDir --config Release
-ctest --test-dir $BuildDir -C Release --output-on-failure
+if ($LASTEXITCODE -ne 0) { throw "C++ build failed" }
+# CMake 3.16 does not support ctest --test-dir.
+Push-Location $BuildDir
+try {
+    if (-not (Test-Path -LiteralPath "CTestTestfile.cmake")) {
+        throw "CMake did not generate the test manifest"
+    }
+    ctest -C Release --output-on-failure
+    if ($LASTEXITCODE -ne 0) { throw "C++ tests failed" }
+}
+finally {
+    Pop-Location
+}
 
 $ScannerCandidates = @(
     (Join-Path $BuildDir "Release/cppinsight.exe"),

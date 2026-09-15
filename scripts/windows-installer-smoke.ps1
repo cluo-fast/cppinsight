@@ -4,7 +4,9 @@ param(
     [string]$BundleRoot,
     [string]$ProductName = "CppInsight AI",
     [string]$ExecutableName = "cppinsight-ai.exe",
-    [int]$StartupTimeoutSeconds = 15
+    [int]$StartupTimeoutSeconds = 15,
+    [ValidateSet("Both", "MSI", "NSIS")]
+    [string]$Flavor = "Both"
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,6 +28,7 @@ function Invoke-Installer([string]$FilePath, [string[]]$Arguments, [string]$Acti
     }) -join ' '
     $process = Start-Process -FilePath $FilePath -ArgumentList $argumentString -Wait -PassThru -WindowStyle Hidden
     Assert-ExitCode $process $Action
+    Write-Host "$Action passed (exit $($process.ExitCode))"
 }
 
 function Find-InstalledExecutable([string]$Name, [string]$BinaryName) {
@@ -58,7 +61,7 @@ function Find-InstalledExecutable([string]$Name, [string]$BinaryName) {
 }
 
 function Assert-AppStarts([string]$Executable, [string]$Flavor) {
-    $process = Start-Process -FilePath $Executable -PassThru
+    $process = Start-Process -FilePath $Executable -PassThru -WindowStyle Hidden
     try {
         $deadline = (Get-Date).AddSeconds($StartupTimeoutSeconds)
         do {
@@ -83,6 +86,7 @@ if ($null -eq $msi -or $null -eq $nsis) {
     throw "Expected one MSI and one NSIS installer under $resolvedBundleRoot"
 }
 
+if ($Flavor -ne "NSIS") {
 Write-Host "Smoke testing MSI: $($msi.Name)"
 Invoke-Installer "msiexec.exe" @("/i", $msi.FullName, "/qn", "/norestart") "MSI install"
 $msiExecutable = Find-InstalledExecutable $ProductName $ExecutableName
@@ -105,10 +109,11 @@ if (Test-Path -LiteralPath $msiExecutable) {
     throw "MSI final uninstall left the application executable behind: $msiExecutable"
 }
 
-$nsisInstallRoot = Join-Path $env:RUNNER_TEMP "cppinsight-nsis-smoke"
-if (Test-Path -LiteralPath $nsisInstallRoot) {
-    Remove-Item -LiteralPath $nsisInstallRoot -Recurse -Force
 }
+
+if ($Flavor -ne "MSI") {
+$temporaryRoot = if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [System.IO.Path]::GetTempPath() }
+$nsisInstallRoot = Join-Path $temporaryRoot ("cppinsight-nsis-smoke-" + [guid]::NewGuid().ToString("N"))
 New-Item -ItemType Directory -Path $nsisInstallRoot -Force | Out-Null
 Write-Host "Smoke testing NSIS: $($nsis.Name)"
 Invoke-Installer $nsis.FullName @("/S", "/D=$nsisInstallRoot") "NSIS install"
@@ -138,4 +143,5 @@ if (Test-Path -LiteralPath $nsisInstallRoot) {
     throw "NSIS final uninstall left the installation directory behind: $nsisInstallRoot"
 }
 
-Write-Host "Windows installer smoke test passed for MSI and NSIS."
+}
+Write-Host "Windows installer smoke test passed for $Flavor."
