@@ -127,6 +127,7 @@ if (existsSync(windowsWorkflowPath)) {
   const workflow = readFileSync(windowsWorkflowPath, "utf8");
   for (const marker of [
     "windows-latest",
+    "branches: [main, 'codex/**']",
     "ctest",
     "cargo test",
     "pnpm run build",
@@ -152,6 +153,9 @@ if (existsSync(windowsWorkflowPath)) {
     "Build release Workbench CLI",
     "cargo build --manifest-path desktop/src-tauri/Cargo.toml --release --bin cppinsight-workbench",
     "Upload Windows installers",
+    "Upload Windows verification evidence",
+    "cppinsight-sample-benchmark.json",
+    "cppinsight-windows-verification.txt",
     "Smoke test MSI and NSIS installers",
     "windows-installer-smoke.ps1",
     "Get-FileHash",

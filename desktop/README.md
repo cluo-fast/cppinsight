@@ -22,7 +22,7 @@ pnpm run build
 cargo test --manifest-path src-tauri\Cargo.toml
 ```
 
-`pnpm run check` 会依次运行发布结构检查、TypeScript/Vite 生产构建和 Rust 测试。C++ 的 CMake/CTest 验证仍需从仓库根目录单独运行。
+`pnpm run check` 会依次运行发布结构检查、TypeScript/Vite 生产构建、调查组件及前端/制品回归测试和 Rust 测试。`pnpm run test:investigation` 可单独运行调查组件测试。C++ 的 CMake/CTest 验证仍需从仓库根目录单独运行。
 
 `verify:release` 允许尚未生成的扫描器资源，适合本地源码检查；打包脚本和 Windows CI 使用严格的 `verify:bundle`，要求 `resources/cppinsight.exe` 已实际存在。
 
@@ -33,6 +33,10 @@ cargo test --manifest-path src-tauri\Cargo.toml
 欢迎页提供“体验内置示例”，示例项目由 Tauri 后端安全写入应用缓存目录，不依赖命令行或用户源码。
 
 索引完成或恢复已有索引后，桌面端会自动生成本地接手报告；报告中的五类关系图入口可直接打开对应工作台。设置页可以关闭 AI 请求进入“仅本地分析”模式；AI 未配置、关闭或调用失败时，报告和关系图仍可用。
+
+选择函数节点后，可使用“改这里会影响哪里”“谁调用它”“它调用谁”和“只看一层邻域”。修改影响面板默认追踪 3 层上游调用，可调整至 8 层，单次最多 500 节点；分别列出直接/间接调用者及入口候选，每个调用者展示一条最短证据链。结果是索引范围内的潜在影响，不是修改安全保证。
+
+点击节点位置或关系证据可打开源码预览，显示行号和索引时间。预览只读取本项目索引片段，不读取任意磁盘文件；源码修改后需重新索引。大图分页完整性及 Windows 原生交互仍需按 [接续清单](../docs/handoffs/2026-09-15-windows-continuation.md) 验收。
 
 ## 开发模式
 

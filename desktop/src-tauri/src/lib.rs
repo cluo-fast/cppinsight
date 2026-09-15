@@ -3,6 +3,7 @@ pub mod diagnostics;
 pub mod graph;
 pub mod index;
 pub mod secrets;
+pub mod source_preview;
 pub mod workspace;
 
 pub use index::write_index;
@@ -3704,6 +3705,7 @@ pub fn run() {
             commands::export_client_summary,
             commands::inspect_symbol,
             commands::query_graph,
+            commands::preview_source,
             commands::save_graph_layout,
             commands::load_graph_layout
         ])

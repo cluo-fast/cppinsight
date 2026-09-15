@@ -568,6 +568,24 @@ pub async fn query_graph(
 }
 
 #[tauri::command]
+pub async fn preview_source(
+    app: tauri::AppHandle,
+    root: String,
+    project_id: i64,
+    file: String,
+    line: i64,
+) -> Result<crate::source_preview::SourcePreview, String> {
+    let db_path = index_db_path_for_root(&app, &PathBuf::from(&root))?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let connection = open_database_at(&db_path)?;
+        validate_project_scope(&connection, project_id, &root)?;
+        crate::source_preview::preview_source(&connection, project_id, &file, line)
+    })
+    .await
+    .map_err(|error| format!("source preview task join error: {error}"))?
+}
+
+#[tauri::command]
 pub async fn save_graph_layout(
     app: tauri::AppHandle,
     root: String,

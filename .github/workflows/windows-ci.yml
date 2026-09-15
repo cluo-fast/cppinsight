@@ -3,7 +3,7 @@ name: Windows desktop
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, 'codex/**']
   workflow_dispatch:
     inputs:
       sign:
@@ -70,6 +70,7 @@ jobs:
         run: |
           pnpm run verify:bundle
           pnpm run build
+          pnpm run test:investigation
           pnpm run test:graph-snapshot
           pnpm run test:graph-workbench-state
           pnpm run test:report-html
@@ -187,6 +188,21 @@ jobs:
             -OutputPath $benchmarkPath
           node scripts/verify-benchmark-result.mjs $benchmarkPath
 
+      - name: Verify investigation end to end
+        shell: pwsh
+        run: |
+          node --experimental-strip-types scripts/smoke-investigation.mjs --scanner desktop/src-tauri/resources/cppinsight.exe --workbench desktop/src-tauri/target/release/cppinsight-workbench.exe
+
+      - name: Record Windows verification metadata
+        shell: pwsh
+        run: |
+          @(
+            "commit=$env:GITHUB_SHA"
+            "workflow=$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            "runner=$env:RUNNER_OS/$env:RUNNER_ARCH"
+            "event=$env:GITHUB_EVENT_NAME"
+          ) | Set-Content (Join-Path $env:RUNNER_TEMP "cppinsight-windows-verification.txt")
+
       - name: Verify Authenticode signatures
         if: github.event_name == 'workflow_dispatch' && inputs.sign && github.ref == 'refs/heads/main'
         shell: pwsh
@@ -243,4 +259,15 @@ jobs:
           path: |
             desktop/src-tauri/target/release/bundle/**/*.msi
             desktop/src-tauri/target/release/bundle/**/*-setup.exe
+            desktop/src-tauri/target/release/bundle/SHA256SUMS.txt
+
+      - name: Upload Windows verification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cppinsight-windows-evidence-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            ${{ runner.temp }}/cppinsight-sample-benchmark.json
+            ${{ runner.temp }}/cppinsight-windows-verification.txt
             desktop/src-tauri/target/release/bundle/SHA256SUMS.txt
