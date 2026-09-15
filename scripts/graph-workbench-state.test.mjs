@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 const state = await import("../desktop/src/graphWorkbenchState.ts");
+await import("./impact-analysis.test.mjs");
 
 test("graph request builder preserves UI filters and pagination", () => {
   const request = state.createGraphRequest(

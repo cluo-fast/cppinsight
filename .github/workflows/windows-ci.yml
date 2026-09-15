@@ -70,6 +70,7 @@ jobs:
         run: |
           pnpm run verify:bundle
           pnpm run build
+          pnpm run test:investigation
           pnpm run test:graph-snapshot
           pnpm run test:graph-workbench-state
           pnpm run test:report-html
@@ -186,6 +187,11 @@ jobs:
             -Iterations 3 `
             -OutputPath $benchmarkPath
           node scripts/verify-benchmark-result.mjs $benchmarkPath
+
+      - name: Verify investigation end to end
+        shell: pwsh
+        run: |
+          node --experimental-strip-types scripts/smoke-investigation.mjs --scanner desktop/src-tauri/resources/cppinsight.exe --workbench desktop/src-tauri/target/release/cppinsight-workbench.exe
 
       - name: Record Windows verification metadata
         shell: pwsh

@@ -14,11 +14,13 @@ powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 
 ## GitHub Actions
 
-`.github/workflows/windows-ci.yml` 在 PR 和 `main` 分支提交上构建无签名安装包，并上传：
+`.github/workflows/windows-ci.yml` 在 PR、`main` 和 `codex/**` 分支提交上构建无签名安装包，并上传：
 
 - MSI 安装包；
 - NSIS `-setup.exe` 安装包；
 - `SHA256SUMS.txt`。
+
+工作流同时执行调查组件测试和 `scripts/smoke-investigation.mjs`，后者使用实际扫描器及 Workbench CLI 验证五类图、上游入口候选、关系证据与报告。源码和 macOS 烟测通过不代表该 Windows 工作流已通过；最新接续记录见 [Windows 接续清单](handoffs/2026-09-15-windows-continuation.md)。
 
 构建后工作流会运行 `scripts/windows-installer-smoke.ps1`，分别对 MSI 和 NSIS 执行安装、启动、卸载、再次安装、再次启动和最终卸载，确认应用进程及安装目录状态。该烟测必须在 Windows runner 上通过；本地 macOS/Linux 构建不能替代它。
 

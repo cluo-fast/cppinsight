@@ -375,6 +375,16 @@ export interface GraphPosition {
   y: number;
 }
 
+export interface SourcePreview {
+  file: string;
+  start_line: number;
+  end_line: number;
+  focus_line: number;
+  text: string;
+  indexed_at: string;
+  truncated: boolean;
+}
+
 export interface SavedGraphLayout {
   protocol_version: number;
   project_id: number;

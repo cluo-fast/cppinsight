@@ -984,6 +984,34 @@ pre {
   overflow: auto;
 }
 
+.graph-task-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.impact-panel, .source-preview {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  margin: 12px 0;
+  background: rgba(13, 20, 27, 0.72);
+}
+
+.impact-panel h3, .source-preview h3 { margin: 0 0 8px; }
+.impact-panel strong, .source-preview h3 { overflow-wrap: anywhere; }
+.impact-list { list-style: none; padding: 0; max-height: 360px; overflow: auto; }
+.impact-list li { display: grid; gap: 8px; border-top: 1px solid var(--line); padding: 12px 0; }
+.impact-list li > button { justify-self: start; }
+.impact-list details { overflow-wrap: anywhere; }
+.impact-list summary { cursor: pointer; }
+.source-link { background: transparent; border: 0; color: #80bdff; padding: 2px 4px; text-align: left; text-decoration: underline; cursor: pointer; overflow-wrap: anywhere; }
+.source-preview pre { overflow: auto; max-height: 320px; font-size: 12px; }
+.source-focus { background: rgba(255, 209, 102, 0.15); }
+.source-line-number { display: inline-block; min-width: 5em; color: var(--muted); user-select: none; }
+
 .graph-inspector h3 {
   margin: 0 0 12px;
 }

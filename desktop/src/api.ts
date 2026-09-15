@@ -14,6 +14,7 @@ import type {
   PersistedChat,
   ProjectOverview,
   ScanResult,
+  SourcePreview,
   SavedGraphLayout,
   UpdateOpenAiSettings,
   WorkspaceSnapshot
@@ -148,6 +149,10 @@ export function queryGraph(
   request: GraphQueryRequest
 ): Promise<GraphQueryResponse> {
   return invoke<GraphQueryResponse>("query_graph", { root, request });
+}
+
+export function previewSource(root: string, projectId: number, file: string, line: number): Promise<SourcePreview> {
+  return invoke<SourcePreview>("preview_source", { root, projectId, file, line });
 }
 
 export function saveGraphLayout(root: string, layout: SavedGraphLayout): Promise<void> {

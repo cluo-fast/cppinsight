@@ -13,6 +13,9 @@ import {
   shortLabel
 } from "./graphSnapshot";
 import { createGraphRequest, mergeGraphResponses, reconcileGraphScope } from "./graphWorkbenchState";
+import { pathEdgeIds } from "./impactAnalysis";
+import ImpactPanel from "./ImpactPanel";
+import SourcePreviewPanel from "./SourcePreviewPanel";
 import type {
   GraphConfidence,
   GraphDirection,
@@ -77,6 +80,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [pathTarget, setPathTarget] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [response, setResponse] = useState<GraphQueryResponse | null>(null);
+  const [responseDirection, setResponseDirection] = useState<GraphDirection>("both");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [positions, setPositions] = useState<Record<string, GraphPosition>>({});
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
@@ -84,6 +88,8 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [impactTarget, setImpactTarget] = useState<GraphNode | null>(null);
+  const [sourceLocation, setSourceLocation] = useState<{ file: string; line: number } | null>(null);
   const canvasRef = useRef<SVGSVGElement | null>(null);
   const cytoscapeContainerRef = useRef<HTMLDivElement | null>(null);
   const cytoscapeRef = useRef<any>(null);
@@ -115,6 +121,26 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
     () => new Set(response?.statistics.central_node_ids ?? []),
     [response]
   );
+  const highlightedEdges = useMemo(() => pathEdgeIds(edges, response?.statistics.shortest_path_node_ids ?? [], responseDirection), [edges, response, responseDirection]);
+
+  useEffect(() => {
+    setImpactTarget(null);
+    setSourceLocation(null);
+  }, [root, projectId, graphDataVersion, graphRequestId]);
+
+  function showSource(file: string, line: number) {
+    setSourceLocation({ file, line });
+  }
+
+  function investigate(node: GraphNode, task: "impact" | "callers" | "callees" | "nearby") {
+    if (task === "impact") setImpactTarget(node);
+    setGraphKind(node.kind === "entry" ? "entry_paths" : "function_calls");
+    setDirection(task === "callees" ? "outgoing" : task === "nearby" ? "both" : "incoming");
+    setDepth(task === "impact" ? 3 : 1);
+    setSearch(""); setConfidence("all"); setRelationFilter("calls");
+    setPathTarget(null);
+    setRootIds([node.id]);
+  }
 
   useEffect(() => {
     if (nodes.length === 0 || cytoscapeFactory) {
@@ -250,7 +276,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       if (source && centralNodes.has(source.id)) node.addClass("central");
     });
     cy.edges().forEach((edge: any) => {
-      if (pathNodes.has(edge.source().id()) && pathNodes.has(edge.target().id())) edge.addClass("path");
+      if (highlightedEdges.has(edge.id())) edge.addClass("path");
     });
     const syncCytoscapePositions = () => {
       const next: Record<string, GraphPosition> = {};
@@ -278,7 +304,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       cy.destroy();
       cytoscapeRef.current = null;
     };
-  }, [nodes, visibleNodes, visibleEdges, pathNodes, centralNodes, graphKind, cytoscapeFactory]);
+  }, [nodes, visibleNodes, visibleEdges, pathNodes, highlightedEdges, centralNodes, graphKind, cytoscapeFactory]);
 
   useEffect(() => {
     const cy = cytoscapeRef.current;
@@ -350,6 +376,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
         `目标=${pathTarget ?? "无"}`
       ].join(" · ");
       setResponse(merged);
+      setResponseDirection(direction);
       if (!nextContinuation) setCollapsedIds(new Set());
       setActiveView(viewLabel);
       setSelectedId((current) =>
@@ -364,7 +391,14 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
       if (querySequence !== graphQuerySequenceRef.current) {
         return;
       }
-      layoutFor(merged.nodes, saved?.positions);
+      const previousPositions = nextContinuation ? positionsRef.current : {};
+      const retained = { ...saved?.positions, ...previousPositions };
+      if (nextContinuation && merged.nodes.some(node => retained[node.id])) {
+        merged.nodes.forEach((node, index) => {
+          retained[node.id] ??= fallbackPosition(index, merged.nodes.length);
+        });
+      }
+      layoutFor(merged.nodes, retained);
       onStatus?.(null);
     } catch (err) {
       if (querySequence !== graphQuerySequenceRef.current) {
@@ -440,7 +474,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
   }
 
   function graphSvgSnapshot(): string {
-    return renderGraphSvgSnapshot(visibleNodes, visibleEdges, positions, pathNodes, centralNodes);
+    return renderGraphSvgSnapshot(visibleNodes, visibleEdges, positions, pathNodes, centralNodes, highlightedEdges);
   }
 
   useEffect(() => {
@@ -565,11 +599,22 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
         <button className="secondary" onClick={() => setZoom(1)}>适应</button>
       </div>
 
+      {selected && ["function", "symbol", "entry"].includes(selected.kind) ? <div className="graph-task-actions" aria-label="代码调查快捷操作">
+        <span>围绕 {selected.label}：</span>
+        <button className="secondary" disabled={loading} onClick={() => investigate(selected, "impact")}>改这里会影响哪里</button>
+        <button className="secondary" disabled={loading} onClick={() => investigate(selected, "callers")}>谁调用它</button>
+        <button className="secondary" disabled={loading} onClick={() => investigate(selected, "callees")}>它调用谁</button>
+        <button className="secondary" disabled={loading} onClick={() => investigate(selected, "nearby")}>只看一层邻域</button>
+      </div> : null}
+      {impactTarget ? <ImpactPanel key={`${root}:${projectId}:${impactTarget.id}`} root={root} projectId={projectId} target={impactTarget} generation={graphDataVersion}
+        onClose={() => setImpactTarget(null)} onLocate={node => investigate(node, "nearby")} onSource={showSource} /> : null}
+      {sourceLocation ? <SourcePreviewPanel key={`${root}:${projectId}:${sourceLocation.file}:${sourceLocation.line}`} root={root} projectId={projectId} {...sourceLocation} generation={graphDataVersion} onClose={() => setSourceLocation(null)} /> : null}
+
       {error ? <div className="banner error">关系图查询失败：{error}</div> : null}
       {response ? (
         <div className="graph-status-row">
-          <span>{response.statistics.returned_node_count} / {response.statistics.original_node_count} 节点</span>
-          <span>{response.statistics.returned_edge_count} / {response.statistics.original_edge_count} 条关系</span>
+          <span>{nodes.length} / {response.statistics.original_node_count} 节点</span>
+          <span>{edges.length} / {response.statistics.original_edge_count} 条关系</span>
           <span>置信度：{response.confidence.overall}</span>
           <span>循环：{response.statistics.cycle_count}</span>
           <span>分组：{response.groups.length}</span>
@@ -619,7 +664,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                 const source = positions[edge.source];
                 const target = positions[edge.target];
                 if (!source || !target) return null;
-                const highlighted = pathNodes.has(edge.source) && pathNodes.has(edge.target);
+                const highlighted = highlightedEdges.has(edge.id);
                 return (
                   <line
                     key={edge.id}
@@ -739,7 +784,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
               <dl className="graph-details">
                 <dt>稳定 ID</dt><dd><code>{selected.id}</code></dd>
                 <dt>限定名</dt><dd>{selected.qualified_name || "—"}</dd>
-                <dt>位置</dt><dd>{selected.file ? `${selected.file}:${selected.line}` : "—"}</dd>
+                <dt>位置</dt><dd>{selected.file ? <button className="source-link" onClick={() => showSource(selected.file, selected.line)}>{selected.file}:{selected.line}</button> : "—"}</dd>
                 <dt>置信度</dt><dd>{selected.confidence}{selected.ambiguous ? " · 歧义" : ""}</dd>
               </dl>
               <h4>关系证据</h4>
@@ -750,7 +795,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
                       <span>{edge.kind} · {edge.source === selected.id ? "→" : "←"}</span>
                       <small>{edge.confidence} · {edge.evidence_ids.length} 条证据</small>
                       {response?.evidence.filter((item) => edge.evidence_ids.includes(item.id)).slice(0, 3).map((item) => (
-                        <code key={item.id}>{item.file}:{item.line}</code>
+                        <button className="source-link" key={item.id} onClick={() => showSource(item.file, item.line)}>{item.file}:{item.line}</button>
                       ))}
                     </li>
                   ))}

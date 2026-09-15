@@ -66,6 +66,11 @@ test("graph SVG snapshot highlights path and central nodes", () => {
   assert.match(svg, /r="17"/);
 });
 
+test("explicit path edges prevent unrelated export highlights", () => {
+  const svg = graphSvgSnapshot(nodes, edges, positions, new Set(nodes.map(node => node.id)), new Set(), new Set());
+  assert.doesNotMatch(svg, /stroke="#ffd166"/);
+});
+
 test("graph SVG snapshot covers every first-release graph kind", () => {
   const graphKinds = [
     ["module_dependencies", "module", "depends_on"],

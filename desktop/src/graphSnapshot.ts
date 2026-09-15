@@ -66,7 +66,8 @@ export function graphSvgSnapshot(
   edges: GraphEdge[],
   positions: Record<string, GraphPosition>,
   pathNodes: ReadonlySet<string>,
-  centralNodes: ReadonlySet<string>
+  centralNodes: ReadonlySet<string>,
+  highlightedEdges?: ReadonlySet<string>
 ): string {
   const lines = edges.map((edge) => {
     const source = positions[edge.source];
@@ -76,7 +77,7 @@ export function graphSvgSnapshot(
     const sourceY = safeCoordinate(source.y, 80);
     const targetX = safeCoordinate(target.x, 80);
     const targetY = safeCoordinate(target.y, 80);
-    const highlighted = pathNodes.has(edge.source) && pathNodes.has(edge.target);
+    const highlighted = highlightedEdges ? highlightedEdges.has(edge.id) : pathNodes.has(edge.source) && pathNodes.has(edge.target);
     return `<line x1="${sourceX}" y1="${sourceY}" x2="${targetX}" y2="${targetY}" stroke="${highlighted ? "#ffd166" : "#7890a8"}" stroke-width="${Math.min(6, 1 + edge.weight / 2)}" marker-end="url(#arrow)"/>`;
   }).join("");
   const circles = nodes.map((node) => {
