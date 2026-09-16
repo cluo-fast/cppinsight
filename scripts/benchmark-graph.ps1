@@ -40,6 +40,8 @@ function Invoke-GraphQuery([string]$RequestJson) {
     if (-not $process.Start()) {
         throw "Failed to start Workbench: $resolvedWorkbenchPath"
     }
+    $process.Refresh()
+    $peakWorkingSet = [double]$process.WorkingSet64
     $process.StandardInput.Write($RequestJson)
     $process.StandardInput.Close()
     $stdout = $process.StandardOutput.ReadToEnd()
@@ -52,7 +54,7 @@ function Invoke-GraphQuery([string]$RequestJson) {
         stderr = $stderr
         exit_code = $process.ExitCode
         elapsed_ms = [math]::Round($start.Elapsed.TotalMilliseconds, 2)
-        peak_working_set_mb = [math]::Round($process.PeakWorkingSet64 / 1MB, 2)
+        peak_working_set_mb = [math]::Round($peakWorkingSet / 1MB, 2)
     }
 }
 
