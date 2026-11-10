@@ -11,7 +11,7 @@ test("graph request builder preserves UI filters and pagination", () => {
     "incoming",
     3,
     "  Engine  ",
-    "precise",
+    "compile-db",
     "calls, inherits, calls",
     "v1:10",
     ["sym:engine"],
@@ -29,7 +29,7 @@ test("graph request builder preserves UI filters and pagination", () => {
       file_paths: [],
       symbol_kinds: [],
       relation_kinds: ["calls", "inherits", "calls"],
-      confidence: ["precise"],
+      confidence: ["compile-db"],
       search: "Engine"
     },
     max_nodes: 500,

@@ -79,7 +79,7 @@ pub fn build_report(
                 mode: allowlisted_value(&project.mode, &["heuristic", "hybrid"]),
                 confidence: allowlisted_value(
                     &project.confidence,
-                    &["heuristic", "hybrid", "precise"],
+                    &["heuristic", "hybrid", "compile-db", "precise"],
                 ),
                 diagnostic_categories: normalize_diagnostic_categories(&project.diagnostics),
             })

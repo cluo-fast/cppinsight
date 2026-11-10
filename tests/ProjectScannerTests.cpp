@@ -258,7 +258,20 @@ void testCompileCommandsHybridMode() {
             foundResolved = true;
         }
     }
-    require(foundResolved, "precise enhance should resolve local include");
+    require(foundResolved, "compile-db enhance should resolve local include");
+    bool sawCompileDb = false;
+    bool headerStaysHeuristic = false;
+    for (const cppinsight::SymbolInfo& symbol : result.symbols) {
+        if (symbol.name == "main") {
+            require(symbol.confidence == "compile-db", "files listed in compile_commands are compile-db, not precise");
+            sawCompileDb = true;
+        }
+        if (symbol.name == "helper") {
+            require(symbol.confidence == "heuristic", "headers absent from compile_commands stay heuristic");
+            headerStaysHeuristic = true;
+        }
+    }
+    require(sawCompileDb && headerStaysHeuristic, "hybrid confidence should follow compile_commands membership");
 
     std::filesystem::remove_all(root);
 }
@@ -475,6 +488,88 @@ void testScannerSurvivesPathologicalRegexLines() {
     std::filesystem::remove_all(root);
 }
 
+bool hasDefinition(const cppinsight::ScanResult& result, const std::string& name) {
+    for (const cppinsight::SymbolInfo& symbol : result.symbols) {
+        if (symbol.name == name && symbol.isDefinition) {
+            return true;
+        }
+    }
+    return false;
+}
+
+void testCallHintsSkipMacrosKeywordsAndMemberDefinitions() {
+    const std::filesystem::path root = std::filesystem::temp_directory_path() /
+        ("cppinsight_call_hints_" + std::to_string(
+            std::chrono::steady_clock::now().time_since_epoch().count()));
+    writeFile(root / "src" / "hints.cpp",
+        "#define check_value(x) (x)\n"
+        "#define LOG(msg) helper(msg)\n"
+        "\n"
+        "int helper(int value);\n"
+        "template <typename T> int announce(T value);\n"
+        "template int announce<int>(int);\n"
+        "struct LocaleRef { LocaleRef(int); };\n"
+        "template LocaleRef::LocaleRef(int);\n"
+        "\n"
+        "int GetTypeUrl(int message_name,\n"
+        "               int type_url_prefix) {\n"
+        "    if (type_url_prefix != 0 &&\n"
+        "        type_url_prefix[type_url_prefix.size() - 1] == 0) {\n"
+        "        return helper(message_name);\n"
+        "    }\n"
+        "    return 0;\n"
+        "}\n"
+        "\n"
+        "struct Box {\n"
+        "    explicit Box(int value)\n"
+        "        : value_(value), extra_(0) {\n"
+        "    }\n"
+        "    explicit operator bool() const { return value_ != 0; }\n"
+        "    int value_;\n"
+        "    int extra_;\n"
+        "    int size() const;\n"
+        "};\n"
+        "\n"
+        "void Demo_run(Box& box) {\n"
+        "    box.size();\n"
+        "    box.helper_member();\n"
+        "    static_assert(sizeof(int) > 0, \"x\");\n"
+        "    alignof(int);\n"
+        "    noexcept(helper(1));\n"
+        "    static_cast<int>(box.size());\n"
+        "    typeid(box);\n"
+        "    LOG(1);\n"
+        "    check_value(helper(2));\n"
+        "#if defined(FOO) || __has_include(<vector>) || __has_feature(cxx_rvalue_references)\n"
+        "    helper(3);\n"
+        "#endif\n"
+        "}\n");
+
+    const cppinsight::ScanResult result = cppinsight::ProjectScanner().scan(root);
+    require(hasDefinition(result, "GetTypeUrl"), "multi-line signature should still be a definition");
+    require(!hasDefinition(result, "size"), "member call size() must not be recorded as a definition");
+    require(!hasDefinition(result, "value_"), "constructor initializer must not be a definition");
+    require(!hasDefinition(result, "extra_"), "later initializer must not be a definition");
+    require(!hasDefinition(result, "bool"), "operator bool must not be a function named bool");
+    require(!hasDefinition(result, "LOG"), "ALL_CAPS macro must not be a definition");
+    require(hasCall(result, "size"), "member call should remain a call clue");
+    require(hasCall(result, "helper"), "ordinary call should remain a call clue");
+    require(!hasCall(result, "static_assert"), "static_assert is not a call");
+    require(!hasCall(result, "sizeof"), "sizeof is not a call");
+    require(!hasCall(result, "alignof"), "alignof is not a call");
+    require(!hasCall(result, "noexcept"), "noexcept is not a call");
+    require(!hasCall(result, "static_cast"), "static_cast is not a call");
+    require(!hasCall(result, "typeid"), "typeid is not a call");
+    require(!hasCall(result, "LOG"), "ALL_CAPS macro invocation is not a call");
+    require(!hasCall(result, "check_value"), "#define name is not a call");
+    require(!hasCall(result, "defined"), "preprocessor defined() is not a call");
+    require(!hasCall(result, "__has_include"), "__has_include is not a call");
+    require(!hasCall(result, "__has_feature"), "__has_feature is not a call");
+    require(!hasCall(result, "announce"), "explicit instantiation is not a call");
+
+    std::filesystem::remove_all(root);
+}
+
 void testScannerFiltersConstructionNoise() {
     const std::filesystem::path root = std::filesystem::temp_directory_path() /
         ("cppinsight_call_noise_" + std::to_string(
@@ -513,6 +608,7 @@ int main() {
         testCompileCommandsArgumentsArrayResolvesIncludes();
         testJsonWriterEscapesAndEmitsAnalysisContract();
         testScannerEmitsStableOwnedGraphFacts();
+        testCallHintsSkipMacrosKeywordsAndMemberDefinitions();
         testScannerFiltersConstructionNoise();
         testScannerSurvivesPathologicalRegexLines();
     } catch (const std::exception& exception) {

@@ -577,7 +577,7 @@ export default function GraphWorkbench({ root, projectId, onStatus, onInspectSym
           <select value={confidence} onChange={(event) => setConfidence(event.target.value as GraphConfidence | "all")}>
             <option value="all">全部</option>
             <option value="resolved">已解析</option>
-            <option value="precise">编译数据库</option>
+            <option value="compile-db">编译数据库</option>
             <option value="heuristic">启发式</option>
             <option value="ambiguous">歧义</option>
             <option value="unresolved">未解析</option>

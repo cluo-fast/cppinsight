@@ -33,6 +33,9 @@ pub enum GraphDirection {
 #[serde(rename_all = "snake_case")]
 pub enum GraphConfidence {
     Resolved,
+    /// Compile-database-assisted. The scanner is still heuristic.
+    /// `precise` is accepted when reading indexes and requests written before the rename.
+    #[serde(rename = "compile-db", alias = "precise")]
     Precise,
     Hybrid,
     Heuristic,
@@ -44,7 +47,7 @@ impl Display for GraphConfidence {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         let value = match self {
             Self::Resolved => "resolved",
-            Self::Precise => "precise",
+            Self::Precise => "compile-db",
             Self::Hybrid => "hybrid",
             Self::Heuristic => "heuristic",
             Self::Ambiguous => "ambiguous",
@@ -422,7 +425,7 @@ fn store_error(error: rusqlite::Error) -> GraphQueryError {
 fn parse_confidence(value: &str) -> GraphConfidence {
     match value {
         "resolved" => GraphConfidence::Resolved,
-        "precise" => GraphConfidence::Precise,
+        "compile-db" | "precise" => GraphConfidence::Precise,
         "hybrid" => GraphConfidence::Hybrid,
         "ambiguous" => GraphConfidence::Ambiguous,
         "unresolved" => GraphConfidence::Unresolved,

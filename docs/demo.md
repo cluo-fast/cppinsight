@@ -2,7 +2,7 @@
 
 This is a record of two pinned open-source trees scanned with the CppInsight CLI on a Linux VM. It is not an accuracy rate for either repository, and it is not the Windows reference-machine benchmark in [the release-notes template](release-notes-template.md).
 
-The scanner is a C++17 line and regular-expression heuristic. `compile_commands.json` supplies include search paths and marks files that appear in the compilation database. It does not re-parse those files with a compiler. In hybrid mode the stored label `precise` means compile-database-assisted. Confirm the evidence line in the source.
+The scanner is a C++17 line and regular-expression heuristic. `compile_commands.json` supplies include search paths and marks files that appear in the compilation database. It does not re-parse those files with a compiler. In hybrid mode, symbols and calls in files listed by `compile_commands.json` are stored as `compile-db`. That means the file was in the compilation database. It does not mean a compiler checked the symbol or the call. Indexes written before this change may still say `precise`; readers accept that alias. Confirm the evidence line in the source.
 
 Full counts and every hand-checked row are in [docs/benchmarks/2026-11-10-linux-vm.json](benchmarks/2026-11-10-linux-vm.json). The same rows are the `accuracy_cases` for `fmt` and `protobuf` in [docs/benchmarks/corpus.json](benchmarks/corpus.json). The other eight corpus projects are still unpinned (`revision: null`).
 
@@ -96,16 +96,48 @@ Includes inside `#if` were still emitted. They are scored correct as text. The s
 
 ### Failures worth seeing
 
+These are the findings from the first pass. The later section says which of them the call-hint rules removed.
+
 - `src/os.cc:88` emits a definition named `system_message::result_`. The line is `result_ = FormatMessageW(...)`.
 - `src/os.cc:101` names `operator bool()` as a function `bool`.
 - `src/os.cc:160` treats the `FMT_CATCH` macro as a function definition.
 - `src/os.cc:217` treats `#if defined(_WIN32)` as a call to `defined`.
 - `src/os.cc:266` treats `static_assert` as a call.
 - `src/format.cc` is ten explicit instantiations. None were emitted as definitions. One line was also emitted as a call.
-- In `src/google/protobuf/any_lite.cc`, `GetTypeUrl` (line 34) was missed. Line 37, `type_url_prefix.size()`, was emitted as a definition of `size`. Hybrid mode still labels that file `precise` because `any_lite.cc` is in the compilation database. The label does not mean the parse was checked by a compiler.
+- In `src/google/protobuf/any_lite.cc`, `GetTypeUrl` (line 34) was missed. Line 37, `type_url_prefix.size()`, was emitted as a definition of `size`. Hybrid mode labeled that file `precise` because `any_lite.cc` is in the compilation database. That label did not mean the parse was checked by a compiler. New scans use `compile-db` for the same fact, and this particular definition error is gone; see the after section.
 - `examples/add_person.cc` and `examples/list_people.cc`: the parenthesized calls that were emitted matched the source. The `fstream(...)` constructors were missed (2 in `add_person.cc`, 1 in `list_people.cc`).
 
 A separate workbench check, not part of the 197: `cppinsight-workbench inspect vformat` on the heuristic fmt index reported a definition at `include/fmt/format-inl.h:1456` and a non-definition at `include/fmt/format.h:4358`. Both match those lines. Confidence on both records was `heuristic`.
+
+## After the call-hint pass
+
+Same pins, same machine class, same lines. The scanner now skips preprocessor lines for calls, skips keywords and casts (`static_assert`, `sizeof`, `alignof`, `decltype`, `noexcept`, `typeid`, `static_cast`, and the other casts), skips ALL_CAPS names and names introduced by `#define`, and does not treat `obj.method(` / `obj->method(` / `: member_(` as definitions. A signature split across a few lines is joined. A declaration or explicit instantiation does not also count as a call to itself. These are general rules, not exceptions for fmt or protobuf.
+
+The rescan is a little slower. This VM is not a stable clock.
+
+| | fmt heuristic | fmt hybrid | protobuf heuristic | protobuf hybrid |
+| --- | ---: | ---: | ---: | ---: |
+| Before wall / scanner | 0.660 s / 528 ms | 0.690 s / 545 ms | 8.301 s / 7051 ms | 10.73 s / 9482 ms |
+| After wall / scanner | 0.691 s / 593 ms | 0.671 s / 578 ms | 8.696 s / 7619 ms | 10.953 s / 9838 ms |
+| Before calls | 13585 | 13585 | 118474 | 118474 |
+| After calls | 7538 | 7538 | 89740 | 89740 |
+| Before symbols (definitions) | 6444 (5078) | same | 45731 (28880) | same |
+| After symbols (definitions) | 6003 (4617) | same | 42643 (28343) | same |
+| Before relations / entry points | 4416 / 8 | same | 45734 / 24 | same |
+| After relations / entry points | 5594 / 8 | same | 67785 / 26 | same |
+
+Include counts and how many local includes resolved did not change (fmt 156/164, protobuf 7541/8046). Hybrid labels are now `compile-db` / `heuristic`: fmt symbols 1944 / 4059, calls 3540 / 3998; protobuf symbols 9485 / 33158, calls 42509 / 47231. Relations and two protobuf entry points moved because more multi-line signatures are recognized. Those relation edges were not part of the hand sample.
+
+Hand check of the same lines, same rules. A false edge that is no longer emitted is not a miss. A real call whose caller was wrong and is now right counts as correct.
+
+| | Checked | Correct | Wrong | Missed | Precision | Recall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Before | 197 | 138 | 30 | 29 | 138/168 = 0.821 | 138/167 = 0.826 |
+| After | 171 | 153 | 0 | 18 | 153/153 = 1.000 | 153/171 = 0.895 |
+
+26 false edges from this sample are no longer emitted (21 calls, 5 definitions), which is why the checked count fell. Includes stayed 49/49. On the edges this sample still emits, none were wrong. That is not a claim about code outside these lines: the same declaration-line rule also dropped other self-calls (fmt call clues fell from 13585 to 7538) and those extra drops were not hand-checked. Still missed: the `system_message` constructor and the conversion operator in `src/os.cc`, the ten explicit instantiations in `src/format.cc` (they are still not definitions; the `locale_ref` line is no longer a call), the `fstream(...)` constructors in the protobuf examples, and a second `size()` on the same line (the scanner still keeps one name per line).
+
+`GetTypeUrl`, `InternalPackFromLite`, and `InternalUnpackToLite` are definitions now. `type_url_prefix.size()` is a call from `GetTypeUrl`, not a definition. `absl::StrCat` on those lines is attributed to `GetTypeUrl`.
 
 ## What this does not show
 

@@ -254,6 +254,7 @@ export type GraphKind =
 export type GraphDirection = "incoming" | "outgoing" | "both";
 export type GraphConfidence =
   | "resolved"
+  | "compile-db"
   | "precise"
   | "hybrid"
   | "heuristic"

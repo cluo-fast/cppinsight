@@ -221,5 +221,117 @@
         }
       }
     }
-  ]
+  ],
+  "after": {
+    "measured_on": "2026-11-10",
+    "scanner_change": "Skip preprocessor lines, keywords/casts, ALL_CAPS and #define names as calls. Do not treat member calls or constructor initializers as definitions. Join a short multi-line signature. compile_commands files are labeled compile-db; precise remains a read alias.",
+    "host_note": "Same VM class as the before run. Timings are not a stable benchmark.",
+    "projects": [
+      {
+        "id": "fmt",
+        "heuristic": {
+          "wall_sec": 0.691,
+          "scan_duration_ms": 593,
+          "files": 72,
+          "symbols": 6003,
+          "definitions": 4617,
+          "includes": 736,
+          "local_includes": 164,
+          "resolved_local_includes": 0,
+          "calls": 7538,
+          "relations": 5594,
+          "entry_points": 8
+        },
+        "hybrid": {
+          "wall_sec": 0.671,
+          "scan_duration_ms": 578,
+          "files": 72,
+          "symbols": 6003,
+          "definitions": 4617,
+          "includes": 736,
+          "local_includes": 164,
+          "resolved_local_includes": 156,
+          "calls": 7538,
+          "relations": 5594,
+          "entry_points": 8,
+          "compile_commands_entries": 51,
+          "symbol_confidence": {
+            "compile-db": 1944,
+            "heuristic": 4059
+          },
+          "call_confidence": {
+            "compile-db": 3540,
+            "heuristic": 3998
+          }
+        }
+      },
+      {
+        "id": "protobuf",
+        "heuristic": {
+          "wall_sec": 8.696,
+          "scan_duration_ms": 7619,
+          "files": 1127,
+          "symbols": 42643,
+          "definitions": 28343,
+          "includes": 11422,
+          "local_includes": 8046,
+          "resolved_local_includes": 0,
+          "calls": 89740,
+          "relations": 67785,
+          "entry_points": 26
+        },
+        "hybrid": {
+          "wall_sec": 10.953,
+          "scan_duration_ms": 9838,
+          "files": 1127,
+          "symbols": 42643,
+          "definitions": 28343,
+          "includes": 11422,
+          "local_includes": 8046,
+          "resolved_local_includes": 7541,
+          "calls": 89740,
+          "relations": 67785,
+          "entry_points": 26,
+          "compile_commands_entries": 597,
+          "files_from_compile_commands": 286,
+          "symbol_confidence": {
+            "heuristic": 33158,
+            "compile-db": 9485
+          },
+          "call_confidence": {
+            "compile-db": 42509,
+            "heuristic": 47231
+          }
+        }
+      }
+    ],
+    "hand_check": {
+      "method": "Same lines and same correct/wrong/missed rules as the before sample. A suppressed false edge is not a miss. Caller fixes that make a real call correctly attributed count as correct.",
+      "before": {
+        "checked": 197,
+        "correct": 138,
+        "wrong": 30,
+        "missed": 29,
+        "precision": 0.821,
+        "recall": 0.826
+      },
+      "after": {
+        "checked": 171,
+        "correct": 153,
+        "wrong": 0,
+        "missed": 18,
+        "suppressed_false_edges": 26,
+        "precision": 1.0,
+        "recall": 0.895
+      },
+      "still_wrong": [],
+      "still_missed": [
+        "src/os.cc constructor system_message and operator basic_string_view, signature split with the brace on a later initializer line in a way this pass still does not take as the definition",
+        "src/format.cc ten explicit instantiations are still not definitions",
+        "fstream(...) constructors in the protobuf examples",
+        "a second size() call on the same line is still collapsed"
+      ],
+      "note": "Precision 1.0 is only the edges this sample still emits. 18 real facts are still missed, and other removed self-calls were not hand-checked."
+    }
+  }
 }

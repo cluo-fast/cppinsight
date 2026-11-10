@@ -17,7 +17,7 @@ CppInsight desktop、Workbench CLI 和 MCP 服务共享同一份本地关系图�
     "file_paths": [],
     "symbol_kinds": ["function"],
     "relation_kinds": ["calls"],
-    "confidence": ["resolved", "precise", "heuristic"],
+    "confidence": ["resolved", "compile-db", "precise", "heuristic"],
     "search": null
   },
   "max_nodes": 500,
@@ -108,11 +108,13 @@ CppInsight desktop、Workbench CLI 和 MCP 服务共享同一份本地关系图�
 
 ## Confidence labels
 
-`confidence` on nodes, edges, and evidence is one of `resolved`, `precise`, `hybrid`, `heuristic`, `ambiguous`, or `unresolved`. Summary objects also count those values.
+`confidence` on nodes, edges, and evidence is one of `resolved`, `compile-db`, `precise`, `hybrid`, `heuristic`, `ambiguous`, or `unresolved`. Summary objects also count those values. The summary field is still named `precise` for the count of `compile-db` edges; that field name is the historical key.
 
-`precise` is a historical stored label. The scanner sets it when a file is listed in `compile_commands.json` and local includes were resolved with that database's include paths. The scan itself is still the C++17 line/regex heuristic in `src/project/ProjectScanner.cpp`. `precise` does not mean a compiler or an AST checked the symbol or the call. The desktop filter shows this value as「编译数据库」. Renaming the wire value would break protocol v1, saved indexes, the MCP schema, and tests, so clients must keep sending and accepting `precise` and document it as compile-database-assisted.
+New scans store `compile-db` when a file is listed in `compile_commands.json` and local includes were resolved with that database's include paths. The scan itself is still the C++17 line/regex heuristic in `src/project/ProjectScanner.cpp`. `compile-db` does not mean a compiler or an AST checked the symbol or the call. The desktop filter shows this value as「编译数据库」.
 
-`heuristic` means the same scanner ran without that compilation-database mark. `hybrid` is the scan-level mode when a compilation database was loaded; individual symbols may still say `precise` or `heuristic`.
+`precise` is the previous spelling of the same bucket. Readers accept it on requests and on indexes written before the rename. New responses emit `compile-db`. Do not describe either spelling as compiler-checked.
+
+`heuristic` means the same scanner ran without that compilation-database mark. `hybrid` is the scan-level mode when a compilation database was loaded; individual symbols may still say `compile-db` or `heuristic`.
 
 ## Stable facts and compatibility
 

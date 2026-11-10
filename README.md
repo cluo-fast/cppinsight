@@ -41,9 +41,9 @@ CppInsight AI keeps the scan, the index, the report, and the graphs on your comp
 
 The scanner (`src/project/ProjectScanner.cpp`) is a C++17 **heuristic**. It walks the tree and uses regular expressions and line scanning to estimate includes, symbols, calls, type relations, and entry points. It does not build a Clang AST and it does not run libTooling.
 
-`compile_commands.json` is optional and narrow. When it is present, the loader collects include search paths and remembers which files the compilation database lists. The scan mode is then `hybrid`. Symbols and calls in those listed files are stored with the confidence label `precise`.
+`compile_commands.json` is optional and narrow. When it is present, the loader collects include search paths and remembers which files the compilation database lists. The scan mode is then `hybrid`. Symbols and calls in those listed files are stored with the label `compile-db`.
 
-**`precise` does not mean compiler-checked or AST-accurate.** It means the file appeared in the compilation database and local includes were resolved against those include paths. The string is part of Graph Protocol v1, the MCP schema, saved indexes, and tests, so the code still emits `precise`. In the desktop filter the same value is shown as "编译数据库" (compilation database). Read it as **compile-database-assisted**, then confirm the evidence line in the source.
+**`compile-db` does not mean compiler-checked or AST-accurate.** It means the file appeared in the compilation database and local includes were resolved against those include paths. The parse is still the line/regex heuristic. In the desktop filter the same value is shown as "编译数据库" (compilation database). Older indexes and requests may still say `precise`; that string is accepted as a legacy alias of `compile-db`. Confirm the evidence line in the source.
 
 Without a compilation database the mode and confidence stay `heuristic`. Macros, templates, `#if`, function pointers, and virtual calls can all be missed or mis-linked. Reports and graphs keep that uncertainty on purpose.
 

@@ -136,7 +136,7 @@ jobs:
 
           ## What the scanner is
 
-          The scanner is a C++17 line and regular-expression heuristic. It does not build a Clang AST and it does not run a compiler front end. When `compile_commands.json` is present it supplies include search paths and remembers which files the compilation database lists. Symbols in those files are stored with the protocol label `precise`. That label means compile-database-assisted, not compiler-checked.
+          The scanner is a C++17 line and regular-expression heuristic. It does not build a Clang AST and it does not run a compiler front end. When `compile_commands.json` is present it supplies include search paths and remembers which files the compilation database lists. Symbols in those files are stored with the label `compile-db`. That label means the file was listed in the compilation database, not that a compiler checked the symbol or the call. Older indexes may still say `precise`; readers accept that alias.
 
           A small hand-checked sample of include, call, and definition edges is in `docs/demo.md` at this tag. Those counts are the sample only. They are not an accuracy rate for a whole repository.
 
