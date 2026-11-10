@@ -36,9 +36,9 @@ export function summarizeImpact(graph: GraphQueryResponse, rootId: string) {
     const path = [nodes.get(id)!, ...edges.map(edge => nodes.get(edge.target)!)];
     return {
       node: nodes.get(id)!, distance: edges.length, path, edges,
-      uncertain: edges.some(edge => edge.ambiguous || !["resolved", "precise"].includes(edge.confidence))
+      uncertain: edges.some(edge => edge.ambiguous || !["resolved", "compile-db", "precise"].includes(edge.confidence))
         || path.some(node => node.ambiguous || node.kind === "unresolved"
-          || (node.confidence && !["resolved", "precise"].includes(node.confidence)))
+          || (node.confidence && !["resolved", "compile-db", "precise"].includes(node.confidence)))
     };
   }).sort((a, b) => a.distance - b.distance || a.node.id.localeCompare(b.node.id));
   return {

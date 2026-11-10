@@ -28,11 +28,13 @@ node scripts/verify-benchmark-result.mjs .\benchmark-graph.json
 
 候选项目清单位于 [`corpus.json`](./corpus.json)，目前固定 10 个不同规模和构建体系的 C/C++ 项目。每次正式基准前必须把 `revision` 固定为 commit SHA，复核许可证，并补充人工核验的 `accuracy_cases`；校验器只负责保证清单结构完整，不把候选清单误报为已完成的准确率基准。
 
+2026-11-10 在一台 Linux 虚拟机上扫了 fmt `12.2.1`（`208219daff58f2a7438f6931cc2ddc358acf33ef`）和 protobuf `v6.31.1`（`74211c0dfc2777318ab53c2cd2c317a2ef9012de`），有无 `compile_commands.json` 各一次。数字、机器和人工核对的边在 [演示记录](../demo.md) 与 [`2026-11-10-linux-vm.json`](./2026-11-10-linux-vm.json)。这是小样本，不是整库准确率，也不是 Windows 基准机上的容量测试。其余 8 个候选项目的 `revision` 仍是 `null`。
+
 ## 当前可验证证据
 
 - Rust 集成测试覆盖 620 节点链的 500 节点分页、确定性 continuation、方向/深度、筛选、最短路径、歧义证据和循环分量。
 - 内置 `examples/sample-cpp` 本地端到端烟测扫描 5 个文件、14 个符号和 5 条调用线索；随附的相对路径 `compile_commands.json` 使扫描进入 hybrid 模式并解析本地包含，五类图查询均返回有效 Protocol v1 响应：模块依赖 2 节点/1 边，函数调用 10 节点/5 边，类关系 10 节点/3 边，文件包含 9 节点/10 边，入口路径 3 节点/2 边。
 - 同一示例生成的接手摘要包含 CMake 构建上下文、`main` 入口、`main → sample::Engine::run → sample::Worker::process` 证据链和脱敏相对路径；该结果只证明产品链路可用，不替代 Windows 性能或真实项目准确率基准。
-- 同一示例使用仓库随附的 3 条相对路径 `compile_commands.json` 以混合模式复测：扫描模式为 `hybrid`，入口 `main` 与 5 条调用线索的存储置信度都是 `precise`。这里的 `precise` 只表示这些文件出现在编译数据库中、本地 include 按其中的搜索路径解析过；扫描器仍然是正则/按行启发式，不是 AST 或编译器核对。五类图查询仍返回 Protocol v1 响应。该结果只证明编译数据库辅助链路可用，不替代目标项目基准。
+- 同一示例使用仓库随附的 3 条相对路径 `compile_commands.json` 以混合模式复测：扫描模式为 `hybrid`。出现在编译数据库中的文件，符号和调用的存储标签是 `compile-db`（旧索引可能仍是 `precise`，读取时当作同一含义）。这只表示这些文件出现在编译数据库中、本地 include 按其中的搜索路径解析过；扫描器仍然是正则/按行启发式，不是 AST 或编译器核对。五类图查询仍返回 Protocol v1 响应。该结果只证明编译数据库辅助链路可用，不替代目标项目基准。
 - 本地 C++ CTest、Rust 全量测试、Clippy `-D warnings`、TypeScript/Vite 构建和 release 配置验证均可重复通过。
 - 真实 Windows 安装、2M 行/20k 文件容量、峰值内存、首次出图 2 秒和 10 个开源项目准确率仍必须由 Windows CI/基准机补测；在证据产生前不得标记为正式公开测试版。

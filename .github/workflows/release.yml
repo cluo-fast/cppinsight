@@ -1,0 +1,171 @@
+name: Release
+
+# Pushing a version tag is the only maintainer step. This workflow builds the
+# existing Windows installers (unsigned unless someone separately signs a
+# main-branch dispatch) plus a Linux scanner CLI, then opens the GitHub Release.
+# Do not tag from a fork or from a commit whose package versions disagree.
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installers:
+    permissions:
+      contents: read
+    uses: ./.github/workflows/windows-ci.yml
+
+  linux-cli:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Install CMake and a C++ compiler
+        run: sudo apt-get update && sudo apt-get install -y build-essential cmake
+
+      - name: Build and test the scanner
+        env:
+          CC: gcc
+          CXX: g++
+        run: |
+          set -euo pipefail
+          cmake -S . -B build-release \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=ON \
+            -DCMAKE_EXE_LINKER_FLAGS="-static-libstdc++ -static-libgcc"
+          cmake --build build-release -j"$(nproc)"
+          ctest --test-dir build-release --output-on-failure
+          install -d dist
+          install -m 0755 build-release/cppinsight "dist/cppinsight-${GITHUB_REF_NAME}-linux-x86_64"
+          # glibc stays dynamic. libstdc++ and libgcc are static so the binary
+          # does not need a matching libstdc++ on the download machine.
+          ldd "dist/cppinsight-${GITHUB_REF_NAME}-linux-x86_64"
+
+      - name: Upload Linux scanner
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: cppinsight-linux-cli
+          if-no-files-found: error
+          retention-days: 14
+          path: dist/cppinsight-${{ github.ref_name }}-linux-x86_64
+
+  publish:
+    needs: [windows-installers, linux-cli]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Refuse a tag that does not match the source version
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, re, os
+          from pathlib import Path
+          cmake = re.search(r"project\(CppInsightAI VERSION (\d+\.\d+\.\d+)", Path("CMakeLists.txt").read_text()).group(1)
+          tauri = json.loads(Path("desktop/src-tauri/tauri.conf.json").read_text())["version"]
+          desktop = json.loads(Path("desktop/package.json").read_text())["version"]
+          mcp = json.loads(Path("tools/mcp-server/package.json").read_text())["version"]
+          cargo = re.search(r'(?m)^version = "(\d+\.\d+\.\d+)"', Path("desktop/src-tauri/Cargo.toml").read_text()).group(1)
+          versions = {
+              "CMakeLists.txt": cmake,
+              "tauri.conf.json": tauri,
+              "desktop/package.json": desktop,
+              "tools/mcp-server/package.json": mcp,
+              "Cargo.toml": cargo,
+          }
+          unique = set(versions.values())
+          if len(unique) != 1:
+              raise SystemExit("version mismatch: " + json.dumps(versions))
+          expected = "v" + cmake
+          tag = os.environ["GITHUB_REF_NAME"]
+          if tag != expected:
+              raise SystemExit(f"tag {tag} does not match source version {expected}")
+          print(f"tag {tag} matches {versions}")
+          PY
+
+      - name: Download Windows installers and Linux CLI
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: cppinsight-*
+          merge-multiple: false
+          path: release-artifacts
+
+      - name: Assemble release assets and notes
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          find release-artifacts -type f \( -name '*.msi' -o -name '*-setup.exe' -o -name 'cppinsight-*-linux-x86_64' \) -print0 |
+            while IFS= read -r -d '' file; do
+              cp "$file" "release-assets/$(basename "$file")"
+            done
+          msi_count=$(find release-assets -name '*.msi' | wc -l)
+          nsis_count=$(find release-assets -name '*-setup.exe' | wc -l)
+          linux_count=$(find release-assets -name 'cppinsight-*-linux-x86_64' | wc -l)
+          if [ "$msi_count" -lt 1 ] || [ "$nsis_count" -lt 1 ] || [ "$linux_count" -ne 1 ]; then
+            echo "expected one MSI, one NSIS setup, and one Linux CLI" >&2
+            find release-artifacts -type f -print >&2
+            exit 1
+          fi
+          (
+            cd release-assets
+            sha256sum -- * > SHA256SUMS.txt
+          )
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          tag = os.environ["GITHUB_REF_NAME"]
+          sha = os.environ["GITHUB_SHA"]
+          notes = f"""# CppInsight AI {tag}
+
+          Windows MSI and NSIS installers in this release are **unsigned**. They do not have an Authenticode signature. Windows SmartScreen may warn or refuse to run them until you explicitly continue. Compare every downloaded file with `SHA256SUMS.txt` before installing.
+
+          本发布附带的 Windows MSI 与 NSIS 安装包**没有签名**（没有 Authenticode）。Windows SmartScreen 可能会警告，甚至拦截运行，直到你手动选择继续。安装前请用 `SHA256SUMS.txt` 核对每个文件。
+
+          This is a tagged build of the source at `{sha}`. It is not a claim that the public-beta checklist in `docs/public-beta-readiness.md` is finished. There is no Authenticode publisher identity on these Windows files.
+
+          ## What the scanner is
+
+          The scanner is a C++17 line and regular-expression heuristic. It does not build a Clang AST and it does not run a compiler front end. When `compile_commands.json` is present it supplies include search paths and remembers which files the compilation database lists. Symbols in those files are stored with the label `compile-db`. That label means the file was listed in the compilation database, not that a compiler checked the symbol or the call. Older indexes may still say `precise`; readers accept that alias.
+
+          A small hand-checked sample of include, call, and definition edges is in `docs/demo.md` at this tag. Those counts are the sample only. They are not an accuracy rate for a whole repository.
+
+          ## Assets
+
+          - Windows x64 MSI (unsigned)
+          - Windows x64 NSIS setup executable (unsigned)
+          - Linux x86_64 `cppinsight` scanner CLI, built on `ubuntu-latest`. libstdc++ and libgcc are linked statically. glibc is still dynamic, so the binary needs a glibc new enough for that runner image.
+          - `SHA256SUMS.txt` for the files attached to this release
+
+          The Linux asset is the scanner CLI only. The desktop app and the Workbench CLI are in the Windows installers. This repository does not produce a signed or notarized macOS build from this workflow.
+
+          ## Not in this release
+
+          - Authenticode signing, a timestamp, or a SmartScreen reputation
+          - A measurement on the Windows reference machine for the multi-million-line targets in `docs/release-notes-template.md`
+          """
+          # The f-string above is indented inside this script. Strip the common indent.
+          lines = notes.splitlines()
+          body = "\n".join(line[10:] if line.startswith("          ") else line for line in lines).strip() + "\n"
+          Path("release-notes.md").write_text(body)
+          PY
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$GITHUB_REF_NAME" \
+            --title "CppInsight AI $GITHUB_REF_NAME (unsigned Windows installers)" \
+            --notes-file release-notes.md \
+            release-assets/*

@@ -8,7 +8,7 @@ Thank you for helping. The project is Apache-2.0. By submitting a contribution y
 
 - Bug fixes, tests, docs, and scanner/graph improvements that keep the heuristic boundary honest.
 - User-facing text that says the scanner is heuristic and that `compile_commands.json` only assists include paths and confidence labels.
-- Do not describe `precise` as compiler-verified or AST analysis. That string is a stored protocol value. Renaming it changes Graph Protocol v1, the MCP schema, saved indexes, and tests. Propose that separately, with a compatibility plan, instead of renaming it in a drive-by patch.
+- Do not describe `compile-db` or the legacy alias `precise` as compiler-verified or AST analysis. New scans emit `compile-db`. Readers still accept `precise` so older indexes and requests keep working.
 
 ## What does not belong in the repository
 
@@ -59,7 +59,7 @@ Use the bug or feature template. Include the app version and steps. Attach a red
 
 感谢贡献。本仓库采用 Apache-2.0。提交贡献即表示你同意以同一许可证授权，见 [LICENSE](LICENSE) 与 [docs/licensing.md](docs/licensing.md)。
 
-请保持对外说法诚实：扫描器是启发式的，`compile_commands.json` 只辅助 include 路径和置信度标签。不要把 `precise` 写成编译器或 AST 已经验证。这个字符串是协议里的存储值，改名会影响 Graph Protocol v1、MCP、已有索引和测试。
+请保持对外说法诚实：扫描器是启发式的，`compile_commands.json` 只辅助 include 路径。新扫描把这类文件标成 `compile-db`。不要把 `compile-db` 或旧别名 `precise` 写成编译器或 AST 已经验证。读取端仍接受 `precise`，这样旧索引和旧请求还能用。
 
 不要提交 API Key、证书、客户源码、项目索引或本机绝对路径，也不要提交 `build/`、`build-codex/` 等构建输出。
 

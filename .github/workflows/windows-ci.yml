@@ -10,6 +10,7 @@ on:
         description: Import the configured certificate and sign Windows bundles
         type: boolean
         default: false
+  workflow_call:
 
 permissions:
   contents: read

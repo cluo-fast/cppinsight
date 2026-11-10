@@ -29,6 +29,7 @@ struct FileAnalysis {
     std::vector<SymbolRelationInfo> relations;
     std::vector<EntryPointInfo> entryPoints;
     std::vector<std::string> diagnostics;
+    std::unordered_set<std::string> macroNames;
 };
 
 struct NamespaceScope {
@@ -407,6 +408,128 @@ bool isIdentifierPart(unsigned char character) {
     return character == '_' || character == '~' || std::isalnum(character) != 0;
 }
 
+// ALL_CAPS names are treated as macro invocations, not calls or definitions.
+// A real function with that spelling is rare; keeping it would leave the
+// FMT_* / CHECK style false positives the heuristic cannot otherwise see.
+bool isAllCapsMacroName(const std::string& name) {
+    if (name.size() < 2) {
+        return false;
+    }
+    bool hasUpper = false;
+    for (unsigned char character : name) {
+        if (std::islower(character) != 0) {
+            return false;
+        }
+        if (std::isupper(character) != 0) {
+            hasUpper = true;
+            continue;
+        }
+        if (character != '_' && std::isdigit(character) == 0) {
+            return false;
+        }
+    }
+    return hasUpper;
+}
+
+bool isControlFlowStart(const std::string& name) {
+    return name == "if" || name == "for" || name == "while" || name == "switch" ||
+        name == "catch" || name == "return";
+}
+
+bool isNonCallableName(const std::string& name) {
+    static const std::unordered_set<std::string> names = {
+        "if", "for", "while", "switch", "catch", "return",
+        "sizeof", "alignof", "decltype", "static_assert", "noexcept", "alignas",
+        "requires", "co_await", "co_yield", "co_return", "typeid", "defined",
+        "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast",
+        "__has_include", "__has_feature", "__has_cpp_attribute",
+        "__has_builtin", "__has_extension",
+        "bool", "char", "int", "void", "float", "double", "auto",
+        "long", "short", "signed", "unsigned", "wchar_t",
+        "char8_t", "char16_t", "char32_t"
+    };
+    return names.find(name) != names.end();
+}
+
+bool isPreprocessorLine(const std::string& code) {
+    const std::string trimmed = trim(code);
+    return !trimmed.empty() && trimmed[0] == '#';
+}
+
+bool lineContinues(const std::string& code) {
+    const std::string trimmed = trim(code);
+    return !trimmed.empty() && trimmed.back() == '\\';
+}
+
+std::string firstIdentifier(const std::string& text) {
+    std::size_t cursor = 0;
+    while (cursor < text.size() && std::isspace(static_cast<unsigned char>(text[cursor])) != 0) {
+        ++cursor;
+    }
+    const std::size_t start = cursor;
+    if (start >= text.size() || !isIdentifierStart(static_cast<unsigned char>(text[start]))) {
+        return {};
+    }
+    ++cursor;
+    while (cursor < text.size() && isIdentifierPart(static_cast<unsigned char>(text[cursor]))) {
+        ++cursor;
+    }
+    return text.substr(start, cursor - start);
+}
+
+void collectMacroDefine(const std::string& code, std::unordered_set<std::string>& names) {
+    const std::string trimmed = trim(code);
+    if (trimmed.empty() || trimmed[0] != '#') {
+        return;
+    }
+    std::size_t cursor = 1;
+    while (cursor < trimmed.size() && std::isspace(static_cast<unsigned char>(trimmed[cursor])) != 0) {
+        ++cursor;
+    }
+    constexpr std::string_view keyword = "define";
+    if (trimmed.compare(cursor, keyword.size(), keyword.data()) != 0) {
+        return;
+    }
+    cursor += keyword.size();
+    if (cursor >= trimmed.size() || std::isspace(static_cast<unsigned char>(trimmed[cursor])) == 0) {
+        return;
+    }
+    while (cursor < trimmed.size() && std::isspace(static_cast<unsigned char>(trimmed[cursor])) != 0) {
+        ++cursor;
+    }
+    const std::size_t start = cursor;
+    if (start >= trimmed.size() || !isIdentifierStart(static_cast<unsigned char>(trimmed[start]))) {
+        return;
+    }
+    ++cursor;
+    while (cursor < trimmed.size() && isIdentifierPart(static_cast<unsigned char>(trimmed[cursor]))) {
+        ++cursor;
+    }
+    names.insert(trimmed.substr(start, cursor - start));
+}
+
+// `.size(`, `obj->foo(`, and `: member_(` are not definitions.
+bool nameIsPrecededByMemberOrInitializer(const std::string& text, std::size_t openParen) {
+    std::size_t cursor = openParen;
+    while (cursor > 0 && std::isspace(static_cast<unsigned char>(text[cursor - 1])) != 0) {
+        --cursor;
+    }
+    while (cursor > 0 && isIdentifierPart(static_cast<unsigned char>(text[cursor - 1]))) {
+        --cursor;
+    }
+    while (cursor > 0 && std::isspace(static_cast<unsigned char>(text[cursor - 1])) != 0) {
+        --cursor;
+    }
+    if (cursor == 0) {
+        return false;
+    }
+    const char previous = text[cursor - 1];
+    if (previous == '.' || previous == '>') {
+        return true;
+    }
+    return previous == ':' && (cursor < 2 || text[cursor - 2] != ':');
+}
+
 std::string extractFunctionName(const std::string& declarator) {
     // Avoid std::regex here: MSVC throws regex_error(error_complexity) on long/noisy lines.
     const std::string trimmed = trim(declarator);
@@ -599,14 +722,10 @@ ExtractedFunction extractFunctionSymbol(
 
     const std::string declarator = stripLeadingTemplate(trimmedLine.substr(0, openParen));
     const std::string name = extractFunctionName(declarator);
-    if (name.empty()) {
+    if (name.empty() || isNonCallableName(name) || isAllCapsMacroName(name)) {
         return ExtractedFunction{};
     }
-
-    static const std::set<std::string> keywords = {
-        "if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "decltype"
-    };
-    if (contains(keywords, name)) {
+    if (nameIsPrecededByMemberOrInitializer(trimmedLine, openParen)) {
         return ExtractedFunction{};
     }
 
@@ -672,14 +791,18 @@ void extractCalls(
     // otherwise look like call expressions to the lexical scanner. Keep an
     // inline function-body line as a fallback for pathological signatures;
     // the index resolver will only persist it when it can recover an owner.
+    const std::string trimmedForDirective = trim(code);
+    if (!trimmedForDirective.empty() && trimmedForDirective[0] == '#') {
+        return;
+    }
+    if (!trimmedForDirective.empty() && trimmedForDirective[0] == ':') {
+        // Constructor initializer lists (`: member_(args), other_(args) {`).
+        return;
+    }
     const bool hasInlineBody = code.find('{') != std::string::npos;
     if (callerQualifiedName.empty() && !hasInlineBody) {
         return;
     }
-    static const std::set<std::string> ignoredNames = {
-        "if", "for", "while", "switch", "catch", "return", "sizeof", "alignof", "decltype",
-        "static_cast", "reinterpret_cast", "const_cast", "dynamic_cast"
-    };
     static const std::set<std::string> expressionPrefixNames = {
         "case", "co_await", "co_return", "delete", "new", "return", "throw"
     };
@@ -739,7 +862,8 @@ void extractCalls(
         const std::size_t lastScope = name.rfind("::");
         const std::string leafName = lastScope == std::string::npos ? name : name.substr(lastScope + 2);
         index = qualifiedEnd - 1;
-        if (leafName == functionSymbolOnLine || contains(ignoredNames, leafName)) {
+        if (leafName == functionSymbolOnLine || isNonCallableName(leafName) ||
+            isAllCapsMacroName(leafName)) {
             continue;
         }
         if (lastScope == std::string::npos) {
@@ -960,6 +1084,13 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
     std::vector<TypeScope> typeScopes;
     std::vector<FunctionScope> functionScopes;
     std::unordered_set<std::string> abstractTypes;
+    struct PendingSignature {
+        std::string text;
+        std::uint64_t line = 0;
+        int extraLines = 0;
+    };
+    std::optional<PendingSignature> pendingSignature;
+    bool directiveContinuation = false;
 
     std::string buffer;
     while (std::getline(input, buffer)) {
@@ -999,15 +1130,58 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
                 }
             }
 
-            const ExtractedFunction function = isTypeSymbol
-                ? ExtractedFunction{}
-                : extractFunctionSymbol(
-                      code,
+            const bool continuedDirective = directiveContinuation;
+            const bool preprocessorLine = continuedDirective || isPreprocessorLine(code);
+            if (preprocessorLine) {
+                if (!continuedDirective) {
+                    collectMacroDefine(code, analysis.macroNames);
+                }
+                directiveContinuation = lineContinues(code);
+            } else {
+                directiveContinuation = false;
+            }
+
+            const std::string trimmedLine = trim(code);
+            const std::size_t openParen = trimmedLine.find('(');
+            const bool lineHasTerminator =
+                trimmedLine.find('{') != std::string::npos || trimmedLine.find(';') != std::string::npos;
+            const std::string leadingToken = firstIdentifier(trimmedLine);
+            const bool holdSignature = !isTypeSymbol && !preprocessorLine && pendingSignature == std::nullopt &&
+                openParen != std::string::npos && !isControlFlowStart(leadingToken) &&
+                !lineHasTerminator;
+
+            if (pendingSignature && !preprocessorLine) {
+                pendingSignature->text.push_back(' ');
+                pendingSignature->text += trimmedLine;
+                ++pendingSignature->extraLines;
+            } else if (holdSignature) {
+                pendingSignature = PendingSignature{trimmedLine, lineNumber, 0};
+            }
+
+            const bool pendingReady = pendingSignature &&
+                (pendingSignature->extraLines > 6 ||
+                 (findMatchingParen(pendingSignature->text, pendingSignature->text.find('(')) != std::string::npos &&
+                  (pendingSignature->text.find('{') != std::string::npos ||
+                   pendingSignature->text.find(';') != std::string::npos)));
+            std::string signatureText = code;
+            std::uint64_t signatureLine = lineNumber;
+            if (pendingReady) {
+                signatureText = pendingSignature->text;
+                signatureLine = pendingSignature->line;
+                pendingSignature.reset();
+            }
+
+            const bool parseSignature = !isTypeSymbol && !preprocessorLine &&
+                (pendingReady || pendingSignature == std::nullopt);
+            const ExtractedFunction function = parseSignature
+                ? extractFunctionSymbol(
+                      signatureText,
                       relativePath,
-                      lineNumber,
+                      signatureLine,
                       scope,
                       functionScopes.empty(),
-                      analysis.symbols);
+                      analysis.symbols)
+                : ExtractedFunction{};
             if (!function.name.empty()) {
                 const SymbolInfo& symbol = analysis.symbols.back();
                 if (!typeScopes.empty()) {
@@ -1053,14 +1227,16 @@ FileAnalysis analyzeFile(const std::filesystem::path& absolutePath, const std::f
             const std::string callerStableKey = !function.name.empty()
                 ? function.stableKey
                 : (functionScopes.empty() ? std::string() : functionScopes.back().stableKey);
-            extractCalls(
-                code,
-                relativePath,
-                lineNumber,
-                function.hasBody ? function.name : std::string(),
-                callerQualifiedName,
-                callerStableKey,
-                analysis.calls);
+            if (!preprocessorLine) {
+                extractCalls(
+                    code,
+                    relativePath,
+                    lineNumber,
+                    function.name,
+                    callerQualifiedName,
+                    callerStableKey,
+                    analysis.calls);
+            }
 
             static const std::regex namespaceRegex(R"(^\s*namespace\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{)");
             std::smatch namespaceMatch;
@@ -1198,6 +1374,7 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
     }
 
     ScanProgress progress;
+    std::unordered_set<std::string> definedMacroNames;
     std::filesystem::recursive_directory_iterator iterator(
         result.rootPath,
         std::filesystem::directory_options::skip_permission_denied);
@@ -1267,6 +1444,7 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
             file.calls = analysis.calls;
             file.relations = analysis.relations;
             file.entryPoints = analysis.entryPoints;
+            definedMacroNames.insert(analysis.macroNames.begin(), analysis.macroNames.end());
             appendAll(result.diagnostics, analysis.diagnostics);
             ++progress.filesAnalyzed;
         }
@@ -1300,6 +1478,24 @@ ScanResult ProjectScanner::scan(const std::filesystem::path& rootPath, const Sca
 
         result.files.push_back(std::move(file));
     }
+
+    // Names introduced by #define are not calls, even when they are not ALL_CAPS.
+    // Filter after the walk so a header's macro covers later call sites.
+    auto dropDefinedMacroCalls = [&definedMacroNames](std::vector<CallInfo>& calls) {
+        calls.erase(
+            std::remove_if(calls.begin(), calls.end(), [&definedMacroNames](const CallInfo& call) {
+                const std::size_t scope = call.name.rfind("::");
+                const std::string leaf = scope == std::string::npos
+                    ? call.name
+                    : call.name.substr(scope + 2);
+                return definedMacroNames.find(leaf) != definedMacroNames.end();
+            }),
+            calls.end());
+    };
+    for (FileInfo& file : result.files) {
+        dropDefinedMacroCalls(file.calls);
+    }
+    dropDefinedMacroCalls(result.calls);
 
     if (!compileCommands.entries.empty()) {
         PreciseEnhancer::enhance(

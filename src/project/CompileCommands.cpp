@@ -350,10 +350,10 @@ void PreciseEnhancer::enhance(
         if (database.compiledFiles.find(absoluteKey) != database.compiledFiles.end()) {
             file.fromCompileCommands = true;
             for (SymbolInfo& symbol : file.symbols) {
-                symbol.confidence = "precise";
+                symbol.confidence = "compile-db";
             }
             for (CallInfo& call : file.calls) {
-                call.confidence = "precise";
+                call.confidence = "compile-db";
             }
         }
     }
@@ -411,7 +411,7 @@ void PreciseEnhancer::enhance(
     }
 
     diagnostics.push_back(
-        "info: precise enhance resolved " + std::to_string(resolvedCount) +
+        "info: compile-db enhance resolved " + std::to_string(resolvedCount) +
         " local includes using compile_commands (" +
         std::to_string(database.entries.size()) + " entries)");
 }

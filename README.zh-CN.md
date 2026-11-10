@@ -7,6 +7,24 @@
 
 **面向不熟悉或遗留的 C/C++ 代码库的本地接手工具：启发式扫描、SQLite 索引、五类关系图，以及可以完全不联网的可选 AI。**
 
+## 快速开始
+
+编好扫描器，扫一遍仓库自带的示例。需要 CMake 3.16+ 和 C++17 编译器。示例本身只要几毫秒；耗时的是 Release 构建，在当前机器上仍然不到一分钟。
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+./build/cppinsight scan examples/sample-cpp
+```
+
+Windows 多配置生成器的程序在 `build\Release\cppinsight.exe`。示例自带 `examples/sample-cpp/compile_commands.json`，所以这次扫描的模式是 `hybrid`。这仍然是按行/正则解析加上头文件搜索路径，不是编译器。fmt 12.2.1 和 protobuf 6.31.1 的计数以及人工核对样本见 [docs/demo.zh-CN.md](docs/demo.zh-CN.md)。
+
+维护者在要发布的那次提交上用一条命令打 GitHub Release。这棵树里的版本号都是 `0.1.0`，所以标签是 `v0.1.0`。不打算发布就不要执行。Windows 的 MSI 和 NSIS 没有签名，SmartScreen 可能会警告。说明见 [docs/releasing-windows.md](docs/releasing-windows.md)。
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
 CppInsight AI 用来接手一套不是你写的 C/C++ 工程。它清点源码、在项目目录写入本地索引，并生成**项目接手报告**和可以回到引用行的**关系图**。它包含桌面应用、命令行和 MCP 服务。它不是编译器，也不是通用聊天客户端。
 
 ## 这不是 C++ Insights
@@ -23,9 +41,9 @@ CppInsight AI 把扫描、索引、报告和关系图留在本机。你可以先
 
 扫描器（`src/project/ProjectScanner.cpp`）是 C++17 **启发式**实现：遍历目录，用正则和按行扫描估计 include、符号、调用、类型关系和入口。它不构建 Clang AST，也不使用 libTooling。
 
-`compile_commands.json` 是可选的，而且用途很窄。找到它时，加载器只收集头文件搜索路径，并记下编译数据库里列出了哪些文件。扫描模式于是成为 `hybrid`。这些文件里的符号和调用会被标成置信度 `precise`。
+`compile_commands.json` 是可选的，而且用途很窄。找到它时，加载器只收集头文件搜索路径，并记下编译数据库里列出了哪些文件。扫描模式于是成为 `hybrid`。这些文件里的符号和调用会被标成 `compile-db`。
 
-**`precise` 不是编译器核对过，也不是 AST 级精确。** 它只表示该文件出现在编译数据库中，并且本地 include 按这些搜索路径做过解析。这个字符串属于 Graph Protocol v1、MCP schema、已保存的索引和测试，所以代码仍输出 `precise`。桌面筛选里同一取值显示为「编译数据库」。请把它理解成**编译数据库辅助**，然后回到证据行核对源码。
+**`compile-db` 不是编译器核对过，也不是 AST 级精确。** 它只表示该文件出现在编译数据库中，并且本地 include 按这些搜索路径做过解析。解析本身仍是按行/正则启发式。桌面筛选里同一取值显示为「编译数据库」。更早的索引和请求可能仍写 `precise`；读取时把它当作 `compile-db` 的旧别名。请回到证据行核对源码。
 
 没有编译数据库时，模式和置信度保持 `heuristic`。宏、模板、`#if`、函数指针和虚调用都可能漏掉或连错。报告和图谱会故意留下这种不确定性。
 
@@ -49,12 +67,14 @@ CppInsight AI 把扫描、索引、报告和关系图留在本机。你可以先
 
 - 启发式解析。不要把一条边当成编译器已经验证的事实。
 - 编译数据库会改善 include 查找并改写保存下来的置信度标签，不会用编译器重新解析文件。
-- 还没有大型第三方仓库上的公开准确率数字。仓库内示例只说明这条流水线能跑通。
+- fmt 12.2.1 和 protobuf 6.31.1 上有一份小的人工核对样本，见 [docs/demo.zh-CN.md](docs/demo.zh-CN.md)：197 条边里 138 条和读过的源码一致，30 条错误，29 条漏掉。这是读过的那些行，不是这两个仓库的准确率。
 - 打包目标是 Windows 桌面（MSI/NSIS）。当前候选安装包未签名，在配置 Authenticode 之前 SmartScreen 可能提示。见 [docs/releasing-windows.md](docs/releasing-windows.md)。
 - Linux 和 macOS 可以编译扫描器以及大部分桌面代码，用于开发，不是发布目标。
 - 没有关闭 AI 时，只有你确认过的摘录会发到你配置的 OpenAI 兼容端点。发送前请再看一眼范围。
 
-## 快速开始
+## 构建、桌面和 MCP
+
+文件顶部的三条命令会编好扫描器并扫描自带示例。这一节是桌面应用和 MCP。
 
 ### 扫描器（CMake）
 
@@ -112,26 +132,45 @@ MCP 配置见 [tools/mcp-server/README.md](tools/mcp-server/README.md)。协议�
 
 ## 截图
 
-仓库里还没有真实截图。在 Show HN、r/cpp、V2EX、知乎发介绍之前，请补上这些文件。在文件放进来之前，不要写成「见下图」。
+下面这些图是在 Linux 上用 Xvfb 截的 Tauri 调试构建，数据是 fmt 12.2.1 的启发式索引（`208219daff58f2a7438f6931cc2ddc358acf33ef`，没有 `compile_commands.json`）。不是 Windows 安装包。索引后的项目栏写着启发式分析，并且没有找到编译数据库。图上的边没有经过编译器核对。命令行录屏见 [docs/screenshots/cli-scan.gif](docs/screenshots/cli-scan.gif)。
 
-| 文件 | 需要拍什么 |
-| --- | --- |
-| `docs/screenshots/01-welcome.png` | 欢迎页，能看到「体验内置示例」和打开项目 |
-| `docs/screenshots/02-onboarding-report.png` | 索引 `examples/sample-cpp` 之后的项目接手报告 |
-| `docs/screenshots/03-function-calls.png` | 函数调用关系图，含一个节点和它的证据 |
-| `docs/screenshots/04-module-dependencies.png` | 模块依赖关系图 |
-| `docs/screenshots/05-class-relations.png` | 类关系图 |
-| `docs/screenshots/06-file-includes.png` | 文件包含关系图 |
-| `docs/screenshots/07-entry-paths.png` | 入口路径关系图 |
-| `docs/screenshots/08-impact.png` | 影响面：调用者或被调用者，以及证据链 |
-| `docs/screenshots/09-source-preview.png` | 从关系图节点或证据行打开的源码预览 |
-| `docs/screenshots/10-local-only-settings.png` | 设置页关闭 AI，能看到仅本地模式和隐私说明 |
+![欢迎页](docs/screenshots/01-welcome.png)
 
-图片补上之后，建议在图注里写明示例项目、图类型，并提醒边是启发式或编译数据库辅助的结果。
+欢迎页。能看到「体验内置示例」和打开项目。
+
+![已索引的 fmt](docs/screenshots/fmt-indexed-project.png)
+
+索引之后的 fmt：72 个文件、45613 行代码、6444 个符号。项目接手报告（`02-onboarding-report.png`）在更下面的内部滚动区域里。这次 Xvfb 会话的滚轮事件没有滚动那个区域，所以这个文件不在仓库里。
+
+![函数调用](docs/screenshots/03-function-calls.png)
+
+函数调用图。这一帧的状态行是 983 个节点里的 500 个、1336 条边里的 853 条，因 `node_limit` 截断，置信度汇总是 `unresolved`。影响面按钮能看见；影响面结果列表没有打开（没有 `08-impact.png`）。
+
+![模块依赖](docs/screenshots/04-module-dependencies.png)
+
+模块依赖：3/3 个节点、13/13 条边（`include` 和 `src`）。状态行把这些边的置信度汇总写成 `resolved`。同一屏的项目栏仍然写着启发式扫描。这里的 `resolved` 是图汇总标签，不是编译器核对。
+
+![类关系](docs/screenshots/05-class-relations.png)
+
+类关系：800 个节点里的 500 个、1716 条边里的 620 条，因 `node_limit` 截断。
+
+![文件包含](docs/screenshots/06-file-includes.png)
+
+文件包含。状态行是 183/183 个节点、573/573 条边，置信度汇总 `unresolved`，选中了 `args.h`。这一帧的画布里节点没有大到能读清。
+
+![入口路径](docs/screenshots/07-entry-paths.png)
+
+入口路径。状态行是 395/395 个节点、647/647 条边。选中的名字是 `static_format_result`。不少绘制落在初始视口外面。
+
+![仅本地设置](docs/screenshots/10-local-only-settings.png)
+
+设置里关掉了 AI。文案是仅本地分析，隐私说明写的是只返回本地检索、不会把内容发给模型。
+
+没有截到：`08-impact.png`（影响面结果列表）和 `09-source-preview.png`（从证据行打开的源码预览）。函数调用那张图上有打开它们的按钮。这次点击没有在画面里留下单独的面板。
 
 ## 项目状态
 
-源码可以构建，也有自动测试（Windows CI 会跑扫描器、前端、Rust、MCP、安装包烟测和示例图基准）。它还不是已签名的公开下载包。大型工程上的准确率、Authenticode，以及上面的截图都还没完成。发布清单见 [docs/public-beta-readiness.md](docs/public-beta-readiness.md)。
+源码可以构建，也有自动测试（Windows CI 会跑扫描器、前端、Rust、MCP、安装包烟测和示例图基准）。它还不是已签名的公开下载包。[docs/demo.zh-CN.md](docs/demo.zh-CN.md) 里的人工样本不是百万行规模的测量。Authenticode 还没有。计划中的两张截图没有拍到：影响面结果列表和源码预览。发布清单见 [docs/public-beta-readiness.md](docs/public-beta-readiness.md)。
 
 ## 许可证
 
