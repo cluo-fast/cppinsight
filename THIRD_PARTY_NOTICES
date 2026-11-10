@@ -1,0 +1,87 @@
+# Third-party notices
+
+CppInsight AI is licensed under Apache-2.0. The components below are
+direct dependencies of this repository. They stay under their own
+licenses. This list is informational and is not legal advice.
+
+Versions are the ones locked on 2026-11-10 in:
+
+- `desktop/pnpm-lock.yaml` for `desktop/package.json`
+- `desktop/src-tauri/Cargo.lock` for `desktop/src-tauri/Cargo.toml`
+- `tools/mcp-server/package-lock.json` for `tools/mcp-server/package.json`
+
+License identifiers were read from the npm registry package metadata and
+the crates.io version metadata for those exact versions. Transitive
+dependencies are not listed one by one; they ship with the lockfiles and
+remain under their upstream licenses.
+
+`examples/sample-cpp` is first-party sample code and is covered by the
+project Apache-2.0 license. It is not a third-party component.
+
+## Desktop runtime (`desktop/package.json` dependencies)
+
+| Package | Version | License |
+| --- | --- | --- |
+| `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT |
+| `@tauri-apps/plugin-dialog` | 2.7.2 | MIT OR Apache-2.0 |
+| `cytoscape` | 3.34.1 | MIT |
+| `lucide-react` | 0.468.0 | ISC |
+| `react` | 18.3.1 | MIT |
+| `react-dom` | 18.3.1 | MIT |
+
+## Desktop development (`desktop/package.json` devDependencies)
+
+These are used to build and test the desktop app. They are not required
+to run a finished installer, but they are part of the published source tree.
+
+| Package | Version | License |
+| --- | --- | --- |
+| `@tauri-apps/cli` | 2.11.4 | Apache-2.0 OR MIT |
+| `@types/react` | 18.3.31 | MIT |
+| `@types/react-dom` | 18.3.7 | MIT |
+| `@vitejs/plugin-react` | 4.7.0 | MIT |
+| `react-test-renderer` | 18.3.1 | MIT |
+| `typescript` | 5.9.3 | Apache-2.0 |
+| `vite` | 5.4.21 | MIT |
+| `vitest` | 2.1.9 | MIT |
+
+## Rust desktop and Workbench CLI (`desktop/src-tauri/Cargo.toml`)
+
+Direct dependencies only. `reqwest` 0.13.4 also appears in `Cargo.lock`
+as a transitive crate; the direct dependency declared by this project is
+0.12.28.
+
+| Crate | Version | License |
+| --- | --- | --- |
+| `chrono` | 0.4.45 | MIT OR Apache-2.0 |
+| `keyring` | 4.1.6 | MIT OR Apache-2.0 |
+| `reqwest` | 0.12.28 | MIT OR Apache-2.0 |
+| `rusqlite` | 0.31.0 | MIT |
+| `serde` | 1.0.229 | MIT OR Apache-2.0 |
+| `serde_json` | 1.0.151 | MIT OR Apache-2.0 |
+| `tauri` | 2.11.5 | Apache-2.0 OR MIT |
+| `tauri-build` (build-dependency) | 2.6.3 | Apache-2.0 OR MIT |
+| `tauri-plugin-dialog` | 2.7.2 | Apache-2.0 OR MIT |
+| `tempfile` | 3.27.0 | MIT OR Apache-2.0 |
+| `tokio` | 1.53.1 | MIT |
+
+`rusqlite` is built with the `bundled` feature. That feature compiles
+SQLite through `libsqlite3-sys` 0.28.0 (MIT). The SQLite library itself
+is in the public domain. See <https://www.sqlite.org/copyright.html>.
+
+## MCP server (`tools/mcp-server/package.json`)
+
+| Package | Version | License |
+| --- | --- | --- |
+| `@modelcontextprotocol/sdk` | 1.30.0 | MIT |
+
+## How to read dual licenses
+
+Several Tauri, Serde, and Tokio-adjacent crates are offered as
+`Apache-2.0 OR MIT` or `MIT OR Apache-2.0`. Either license may be
+followed. This project does not narrow that choice. A distributor who
+needs a single election should pick one of the stated licenses and keep
+the upstream copyright notices.
+
+Rebuild this file when a direct dependency is added, removed, or bumped
+to a version whose license metadata changed.

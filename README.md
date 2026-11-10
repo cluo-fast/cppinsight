@@ -1,103 +1,89 @@
 # CppInsight AI
 
-CppInsight AI 是面向陌生、遗留或缺少文档的 C/C++ 项目的本地接手工具。它把源码扫描、SQLite 索引、项目总览、符号关系查询和带引用的 AI 问答放进一个 Windows 桌面应用，目标产物是可复查的**项目接手报告**与复杂代码**关系图**，而不是通用聊天客户端。
+[简体中文](README.zh-CN.md)
 
-## 当前状态
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+[![Windows CI](https://github.com/cluo-fast/cppinsight/actions/workflows/windows-ci.yml/badge.svg)](https://github.com/cluo-fast/cppinsight/actions/workflows/windows-ci.yml)
 
-仓库已具备可测试的产品基础，但**尚未达到公开测试版发布条件**。
+**Local onboarding for an unfamiliar or legacy C/C++ codebase: a heuristic scan, a SQLite index, five relationship graphs, and optional AI that can stay entirely on your machine.**
 
-已经实现：
+CppInsight AI helps you take over a C/C++ tree you did not write. It inventories the source, writes a project-local index, and produces an onboarding report plus relationship graphs you can check against the cited lines. It is a desktop workbench, a small CLI, and an MCP server. It is not a compiler, and it is not a general chat client.
 
-- C/C++ 文件盘点、代码/注释/空行统计、目录与扩展名分布；
-- `compile_commands.json` 辅助的混合分析，以及基于文件时间戳的增量复用；
-- 符号、`#include` 和函数调用线索提取；
-- 项目本地 SQLite 索引、多项目与多会话恢复；
-- 项目总览、热点文件、入口候选、调用者/被调用者和入口路径查询；
-- 带源码引用的可选 AI 问答，以及客户摘要导出；
-- 索引完成后自动生成本地接手报告，报告可直接跳转五类关系图；
-- CLI、workbench CLI 和 stdio MCP 服务；
-- Windows 打包基础、严格 CSP、操作系统凭据库和脱敏诊断导出。
+## Not C++ Insights
 
-关系图基础现在已包括统一 Graph Protocol v1、五类关系图工作台、可追溯证据、路径/循环/中心节点分析、布局保存和接手报告融合。协议、CLI/MCP 传输和图基准说明分别见 [Graph Protocol v1](docs/graph-protocol-v1.md)、[MCP 服务](tools/mcp-server/README.md) 和 [图查询基准](docs/benchmarks/graph-baseline.md)。
+[C++ Insights](https://cppinsights.io) (Andreas Fertig) shows how a compiler front end transforms modern C++: templates, lambdas, range-for, and similar rewrites, using Clang. **CppInsight AI does not do that.** It does not compile your project and it does not print compiler transformations. The names are similar; the tools are not. If you want to see what the compiler does to a snippet, use C++ Insights. If you want a map of an existing repository, use this project.
 
-公开测试前仍必须完成的发布门槛：
+## Why it exists
 
-- Windows runner 原生安装包、端到端安装验证、校验和与 Authenticode 签名；
-- 核心与桌面目录的正式许可证文件、第三方声明和 open-core 授权边界；
-- 目标环境中安装 Cytoscape.js 后的五类图交互与导出实测；
-- MCP SDK 依赖可获取后的 Node 传输测试；
-- 真实基准项目的延迟、内存和准确率记录。
+Large C/C++ projects often arrive without a guide: a partial build, years of macros, and no one left who remembers which directory is the entry point. Reading that tree file by file is slow, and sending the whole tree to a hosted model is often unacceptable.
 
-GraphWorkbench 使用统一、版本化的图查询模型，目标渲染引擎为 Cytoscape.js，并在未安装依赖的源码开发环境提供确定性后备画布；支持筛选、搜索、渐进展开、路径高亮、证据检查和节点上限保护。在上述发布门槛和 Windows CI 实机结果完成前，不应把当前分支描述为公开测试版。
+CppInsight AI keeps the scan, the index, the report, and the graphs on your computer. You use them to answer "where do I start?" and "who calls this?" before changing code. An optional model can explain a short cited excerpt after you confirm the file and line range. You can turn that off and keep every local feature.
 
-## Windows 桌面使用
+## What the analysis actually is
 
-### 普通用户快速上手
+The scanner (`src/project/ProjectScanner.cpp`) is a C++17 **heuristic**. It walks the tree and uses regular expressions and line scanning to estimate includes, symbols, calls, type relations, and entry points. It does not build a Clang AST and it does not run libTooling.
 
-1. 安装 Windows 安装包（MSI 或 NSIS）。当前候选包未签名，Windows SmartScreen 可能提示确认；正式公开发布前需要 Authenticode 签名。
-2. 启动 `CppInsight AI`，在欢迎页选择“体验内置示例”；也可以选择“打开其他项目”并选取本地 C/C++ 项目目录。
-3. 等待扫描和索引完成。完成后会显示文件、代码行数、符号和入口候选，并自动生成本地接手报告。
-4. 在报告中选择“打开关系图”，切换模块依赖、函数调用、类关系、文件包含或入口路径。用搜索、方向、深度和置信度筛选结果；点击节点查看位置与证据。
-5. 在关系图工具栏使用“放大”“缩小”“适应”查看大图，拖拽节点调整布局；需要保留布局时选择“保存布局”，需要分享时选择“导出 SVG”或“导出 PNG”。
-6. 选中函数后可选择“查影响面”“谁调用它”或“它调用谁”。结果会区分直接/间接调用者，并显示最短证据链；启发式关系应回看引用源码确认。
-7. 点击节点位置或证据行打开源码预览。预览来自索引快照，源码修改后请先“重新索引”；索引过程中可以“取消索引”，不会破坏上一份完整索引。
-8. 如不希望发送任何代码到模型，进入“设置”关闭 AI，界面会显示“仅本地分析”。此模式仍可使用扫描、报告、关系图、符号查询和脱敏诊断。
+`compile_commands.json` is optional and narrow. When it is present, the loader collects include search paths and remembers which files the compilation database lists. The scan mode is then `hybrid`. Symbols and calls in those listed files are stored with the confidence label `precise`.
 
-首次启动可直接选择“体验内置示例”，无需准备客户源码即可查看扫描、接手报告和五类关系图；也可点击“打开项目”选择本地 C/C++ 目录。
+**`precise` does not mean compiler-checked or AST-accurate.** It means the file appeared in the compilation database and local includes were resolved against those include paths. The string is part of Graph Protocol v1, the MCP schema, saved indexes, and tests, so the code still emits `precise`. In the desktop filter the same value is shown as "编译数据库" (compilation database). Read it as **compile-database-assisted**, then confirm the evidence line in the source.
 
-开发仓库中的便捷入口：
+Without a compilation database the mode and confidence stay `heuristic`. Macros, templates, `#if`, function pointers, and virtual calls can all be missed or mis-linked. Reports and graphs keep that uncertainty on purpose.
 
-```powershell
-.\启动CppInsight.bat
+## Features
+
+- **Five relationship graphs**, one protocol for the desktop, the Workbench CLI, and MCP:
+  - module dependencies
+  - function calls
+  - class relations
+  - file includes
+  - entry paths
+- **Impact analysis** for a selected function: direct and indirect callers, callees, and a short evidence chain. This is an index-scoped hint, not a proof that a change is safe.
+- **Local SQLite index** at `<project>/.cppinsight/index.sqlite`, with incremental reuse and a cancelable rescan that keeps the previous complete index.
+- **Optional AI**, including a persistent local-only mode. Local-only mode still scans, reports, graphs, and answers from the local index. It does not call a model.
+- **CLI** (`cppinsight`) for scan, overview, and a written brief.
+- **MCP server** (`tools/mcp-server`) with `cppinsight_inspect`, `cppinsight_ask`, and `cppinsight_graph` for a local agent.
+
+Search, depth, direction, layout save, and SVG/PNG export live in the desktop graph workbench. The bundled sample (`examples/sample-cpp`) opens from the welcome screen as the built-in sample, so you can try the onboarding report without bringing your own tree.
+
+## Limitations
+
+- Heuristic parsing. Do not treat a graph edge as something the compiler verified.
+- A compilation database improves include lookup and changes the stored confidence label. It does not re-parse the file with a compiler.
+- No published accuracy numbers yet on large third-party repositories. The in-tree sample only shows that the pipeline runs.
+- The packaged app is a Windows desktop (MSI/NSIS). Current candidate installers are unsigned. SmartScreen can warn until Authenticode signing is configured. See [docs/releasing-windows.md](docs/releasing-windows.md).
+- Linux and macOS can build the scanner and much of the desktop for development. They are not the release target.
+- AI, when you leave it enabled, sends only the confirmed excerpt to the OpenAI-compatible endpoint you configure. Review that range before you continue.
+
+## Quick start
+
+### Scanner (CMake)
+
+Requires CMake 3.16+ and a C++17 compiler.
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build --config Release
+ctest --test-dir build -C Release --output-on-failure
 ```
 
-也可以从源码启动：
+Windows multi-config generators put the binary in `build\Release\cppinsight.exe`. Single-config generators (Ninja, Make) put it in `build/cppinsight`.
+
+```bash
+./build/cppinsight scan examples/sample-cpp --json scan.json --overview overview.md
+./build/cppinsight overview examples/sample-cpp --output overview.md
+```
+
+Pass `--compile-commands <file>` when you already have a compilation database. Add `--incremental <previous-json>` to reuse an earlier scan.
+
+### Desktop
+
+The Windows launcher from a source checkout is `启动CppInsight.bat`, or:
 
 ```powershell
 .\scripts\start-desktop.ps1
 ```
 
-首次打开项目会扫描并写入 `<项目>/.cppinsight/index.sqlite`；以后打开优先复用本地索引。代码发生变化后可在界面中主动重新索引，扫描期间也可取消且不会破坏上一份完整索引。
-
-## 隐私与 AI 边界
-
-- 扫描、统计、索引和关系查询默认在本机完成。
-- 只有用户主动发起 AI 问答时，相关问题与检索出的少量代码上下文才会发送到用户配置的 OpenAI 或兼容端点。
-- 设置页可关闭 AI 请求；关闭后问答只返回本地检索位置，不会连接模型，索引、报告、关系图和符号查询仍可用。
-- 每次 AI 问答发送前会先展示将使用的文件和行号范围；用户确认后才会继续请求模型。
-- API Key 保存到 Windows Credential Manager（macOS 开发环境使用 Keychain），不会保存到 SQLite，也不会返回给前端页面。
-- 设置中的诊断预览/导出只包含版本、平台、匿名项目 ID 和聚合计数，不包含源码、绝对路径、聊天内容或 API Key。
-- 环境变量 `OPENAI_BASE_URL`、`OPENAI_API_KEY`、`OPENAI_MODEL` 优先于桌面设置。
-
-## C++ 扫描器 CLI
-
-```powershell
-cmake -S . -B build -DBUILD_TESTING=ON
-cmake --build build --config Release
-ctest --test-dir build -C Release --output-on-failure
-
-.\build\Release\cppinsight.exe scan D:\code\project --json scan.json --overview overview.md
-.\build\Release\cppinsight.exe overview D:\code\project --output overview.md
-.\build\Release\cppinsight.exe brief D:\code\project --output brief.md
-```
-
-需要更准确的编译上下文时可添加 `--compile-commands <file>`；增量扫描可添加 `--incremental [previous-json]`。
-
-当前解析器仍包含启发式逻辑。宏、模板、条件编译、函数指针、动态分派及不完整编译数据库可能降低关系置信度，界面和报告必须保留这种不确定性，而不能把线索冒充完整语义事实。
-
-## Workbench CLI 与 MCP
-
-桌面建立索引后，可直接查询：
-
-```powershell
-cargo build --release --manifest-path desktop\src-tauri\Cargo.toml --bin cppinsight-workbench
-.\desktop\src-tauri\target\release\cppinsight-workbench.exe inspect --root D:\code\project encryptFile
-.\desktop\src-tauri\target\release\cppinsight-workbench.exe ask --root D:\code\project "入口在哪里？"
-```
-
-MCP 服务位于 `tools/mcp-server`，提供 `cppinsight_inspect`、`cppinsight_ask` 与 `cppinsight_graph`。配置示例见 [tools/mcp-server/README.md](tools/mcp-server/README.md)。
-
-## 桌面开发、验证与发布
+From source, the desktop app needs Rust (stable), Node.js 22, pnpm 11.19, and a built scanner:
 
 ```powershell
 cd desktop
@@ -105,18 +91,52 @@ pnpm install --frozen-lockfile
 pnpm run check
 ```
 
-完整 Windows 打包：
+`pnpm run check` runs the release-config verifier, the production frontend build, the frontend regression tests, and `cargo test`. Packaging (NSIS and MSI) is `.\scripts\package-app.ps1` from the repository root. Details: [desktop/README.md](desktop/README.md).
+
+After the first index, open the onboarding report and switch graphs from there. Settings can disable AI; the status then shows local-only analysis.
+
+### Workbench CLI and MCP
 
 ```powershell
-.\scripts\package-app.ps1
+cargo build --release --manifest-path desktop\src-tauri\Cargo.toml --bin cppinsight-workbench
+.\desktop\src-tauri\target\release\cppinsight-workbench.exe inspect --root D:\path\to\project encryptFile
 ```
 
-安装包签名、校验和、CI 与回滚步骤见 [Windows 发布指南](docs/releasing-windows.md)。产品架构和首发关系图验收标准见 [公开测试版设计](docs/superpowers/specs/2026-08-27-public-beta-code-graph-design.md)。
+MCP setup: [tools/mcp-server/README.md](tools/mcp-server/README.md). Protocol: [docs/graph-protocol-v1.md](docs/graph-protocol-v1.md).
 
-公开测试准备状态见 [公开测试准备清单](docs/public-beta-readiness.md)。
-许可证边界和发布前授权检查见 [许可证边界说明](docs/licensing.md)。
-发布时请复制并填写 [发布说明模板](docs/release-notes-template.md)，未填完前只能发布内部/候选构建。
+## Privacy
 
-## 反馈材料
+Scanning, indexing, graphs, and impact queries stay on the machine. An API key, if you set one, goes to the operating-system credential store (Windows Credential Manager, or Keychain on macOS). It is not written to the project SQLite file and it is not returned to the webview. Diagnostic export is an aggregate preview: version, platform, an anonymous project id, and counts. It is not your source, your paths, your chat, or your key.
 
-公开测试反馈入口：[提交 Issue](https://github.com/cluo-fast/cppinsight/issues/new/choose)。报告问题时，请附上应用版本、复现步骤和设置页导出的脱敏诊断 JSON。不要上传客户源码、项目索引、真实路径、API Key 或含敏感内容的聊天记录。
+`OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL` override the values saved in the desktop settings.
+
+## Screenshots
+
+Real captures are not in the tree yet. Please add these files before a Show HN / r/cpp / V2EX / 知乎 post. Until then, do not imply that the pictures already exist.
+
+| File | What to capture |
+| --- | --- |
+| `docs/screenshots/01-welcome.png` | Welcome screen with the built-in sample and open-project actions |
+| `docs/screenshots/02-onboarding-report.png` | Onboarding report after indexing `examples/sample-cpp` |
+| `docs/screenshots/03-function-calls.png` | Function-call graph with a node and its evidence |
+| `docs/screenshots/04-module-dependencies.png` | Module-dependency graph |
+| `docs/screenshots/05-class-relations.png` | Class-relationship graph |
+| `docs/screenshots/06-file-includes.png` | File-include graph |
+| `docs/screenshots/07-entry-paths.png` | Entry-path graph |
+| `docs/screenshots/08-impact.png` | Impact panel: callers or callees and the evidence chain |
+| `docs/screenshots/09-source-preview.png` | Source preview opened from a graph node or evidence line |
+| `docs/screenshots/10-local-only-settings.png` | Settings with AI off, showing local-only mode and the privacy note |
+
+Suggested caption under each image once it exists: the sample project, the graph kind, and a reminder that edges are heuristic or compile-database-assisted.
+
+## Project status
+
+The source tree builds and has automated tests (Windows CI runs the scanner, frontend, Rust, MCP, installer smoke, and a sample graph benchmark). It is not yet a signed public download. Accuracy on real multi-million-line trees, Authenticode, and the screenshots above are still open. Track the release checklist in [docs/public-beta-readiness.md](docs/public-beta-readiness.md).
+
+## License
+
+The scanner, tests, desktop app, CLI, MCP server, examples, and docs are Apache-2.0. See [LICENSE](LICENSE), [NOTICE](NOTICE), [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES), and [docs/licensing.md](docs/licensing.md).
+
+## Contributing
+
+Issues and pull requests are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) before sending a change. Bug reports: use the GitHub issue form and do not paste customer source, indexes, absolute paths, or API keys. A redacted diagnostic export from Settings is the right attachment.

@@ -1,7 +1,9 @@
+# Local CMake/build trees. Do not commit them.
+# build/ and build-codex/ were committed in e71f9975b2bb51b01ef7c1d51e9cdc197f371944
+# and removed from the tree later; they remain in history until the owner rewrites it.
 /build/
-/build-release/
-/build-codex/
-/build-graph-data/
+/build-*/
+*.obj
 /.worktrees/
 /.cppinsight/
 **/.cppinsight/

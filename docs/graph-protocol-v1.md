@@ -106,6 +106,14 @@ CppInsight desktop、Workbench CLI 和 MCP 服务共享同一份本地关系图�
 
 当节点数超过 `max_nodes` 时，响应设置 `truncated = true`、`truncation_reason = "node_limit"`，并给出 `continuation = "v1:<下一偏移>"`。下一请求复用同一请求并替换 continuation；分页不会改变节点排序或筛选结果。
 
+## Confidence labels
+
+`confidence` on nodes, edges, and evidence is one of `resolved`, `precise`, `hybrid`, `heuristic`, `ambiguous`, or `unresolved`. Summary objects also count those values.
+
+`precise` is a historical stored label. The scanner sets it when a file is listed in `compile_commands.json` and local includes were resolved with that database's include paths. The scan itself is still the C++17 line/regex heuristic in `src/project/ProjectScanner.cpp`. `precise` does not mean a compiler or an AST checked the symbol or the call. The desktop filter shows this value as「编译数据库」. Renaming the wire value would break protocol v1, saved indexes, the MCP schema, and tests, so clients must keep sending and accepting `precise` and document it as compile-database-assisted.
+
+`heuristic` means the same scanner ran without that compilation-database mark. `hybrid` is the scan-level mode when a compilation database was loaded; individual symbols may still say `precise` or `heuristic`.
+
 ## Stable facts and compatibility
 
 扫描器 schema 3 写入稳定符号键、限定名、父作用域、调用者归属、候选目标、类型关系、入口点及证据置信度。旧 schema 2 JSON/数据库会在导入或打开时补齐稳定键和兼容字段；无法恢复的语义使用 `legacy-json/2` 和 heuristic 置信度。索引写入在单事务中完成，失败不会切换当前完整 generation。

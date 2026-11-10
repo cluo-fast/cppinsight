@@ -36,9 +36,9 @@ Add to your MCP settings (path adjust as needed):
   "mcpServers": {
     "cppinsight": {
       "command": "node",
-      "args": ["D:/wpscode/cppinsight/tools/mcp-server/index.mjs"],
+      "args": ["D:/path/to/cppinsight/tools/mcp-server/index.mjs"],
       "env": {
-        "CPPINSIGHT_WORKBENCH": "D:/wpscode/cppinsight/desktop/src-tauri/target/release/cppinsight-workbench.exe"
+        "CPPINSIGHT_WORKBENCH": "D:/path/to/cppinsight/desktop/src-tauri/target/release/cppinsight-workbench.exe"
       }
     }
   }
