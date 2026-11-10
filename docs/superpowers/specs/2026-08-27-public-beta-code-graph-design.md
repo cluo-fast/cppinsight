@@ -261,6 +261,8 @@ continuation
 
 ## 10. 开放边界与仓库策略
 
+> 本节原来的「核心公开、桌面私有」拆分已经停用。当前整个仓库（核心与 desktop）同为 Apache-2.0，以根目录 `LICENSE` 和 [`docs/licensing.md`](../../licensing.md) 为准。下面的段落保留为当时的设计记录，不要再当成现行授权。
+
 采用 open-core 模式。
 
 公开的 `cppinsight-core` 包含：

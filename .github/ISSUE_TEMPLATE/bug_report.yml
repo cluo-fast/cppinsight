@@ -1,13 +1,13 @@
 name: Bug report
-description: 报告可复现的扫描、关系图、报告或桌面端问题
+description: Reproducible scan, graph, report, or desktop bug. 报告可复现的扫描、关系图、报告或桌面端问题。
 title: "[Bug] "
 labels:
-  - public-beta
   - bug
 body:
   - type: markdown
     attributes:
       value: |
+        Thanks for the report. English or Chinese is fine.
         感谢反馈！请勿上传客户源码、索引数据库、API Key、真实项目路径或聊天内容。
         如需附加环境信息，请先在设置页导出并检查脱敏诊断 JSON。
   - type: input

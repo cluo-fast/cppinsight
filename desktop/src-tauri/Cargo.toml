@@ -2,9 +2,9 @@
 name = "cppinsight-ai"
 version = "0.1.0"
 description = "CppInsight AI desktop workbench"
-authors = ["CppInsight AI"]
-license = ""
-repository = ""
+authors = ["CppInsight AI contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/cluo-fast/cppinsight"
 edition = "2021"
 
 [lib]

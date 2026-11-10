@@ -39,7 +39,8 @@
 - [x] MCP SDK 安装后运行 `npm test` 通过（4/4，含真实 stdio initialize/tools/list 握手），无 SDK 的核心契约测试也可独立运行。
 - [x] Windows CI 已接入 MSI/NSIS 安装、启动、卸载烟测脚本；待首个 Windows runner 运行产生证据。
 - [x] 发布说明模板已覆盖版本、CI 证据、性能、已知限制、隐私、制品哈希和回滚版本；正式发布前必须填写真实结果。
-- [ ] 核心/桌面许可证边界、版权主体、第三方声明和正式授权文件已由项目所有者确认（见 [`docs/licensing.md`](licensing.md)）。
+- [x] 整个仓库（`src/` 与 `desktop/`）已放置 Apache-2.0 `LICENSE`、`NOTICE` 和 `THIRD_PARTY_NOTICES`（见 [`docs/licensing.md`](licensing.md)）。版权行写作 “CppInsight AI contributors”，因为仓库没有写明其他权利人。
+- [ ] 所有者确认有权以该名义公开（若为职务作品，需雇主或权利人同意），并决定是否在公开前清理历史中的企业邮箱和本机路径。未确认前不要把仓库改为 public。
 
 ## 目标环境发布门槛
 

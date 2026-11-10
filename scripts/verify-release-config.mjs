@@ -194,12 +194,26 @@ function requireTextMarkers(filePath, label, markers) {
 }
 
 requireTextMarkers(path.join(root, "README.md"), "root README", [
+  "onboarding report",
+  "relationship graph",
+  "MCP",
+  "Privacy",
+  "启动CppInsight.bat",
+  "built-in sample",
+  "heuristic",
+  "C++ Insights",
+  "Apache-2.0",
+  "README.zh-CN.md"
+]);
+requireTextMarkers(path.join(root, "README.zh-CN.md"), "Chinese README", [
   "项目接手报告",
   "关系图",
   "MCP",
   "隐私",
   "启动CppInsight.bat",
-  "体验内置示例"
+  "体验内置示例",
+  "启发式",
+  "C++ Insights"
 ]);
 requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "scripts/package-app.ps1",
@@ -207,11 +221,15 @@ requireTextMarkers(path.join(root, "desktop", "README.md"), "desktop README", [
   "体验内置示例"
 ]);
 requireTextMarkers(path.join(root, "docs", "licensing.md"), "license boundary document", [
-  "open-core",
   "Apache-2.0",
   "desktop/",
-  "第三方声明"
+  "src/",
+  "THIRD_PARTY_NOTICES",
+  "CppInsight AI contributors"
 ]);
+requireFile(path.join(root, "LICENSE"), "Apache-2.0 license");
+requireFile(path.join(root, "NOTICE"), "Apache-2.0 notice");
+requireFile(path.join(root, "THIRD_PARTY_NOTICES"), "third-party notices");
 requireFile(path.join(root, "docs", "release-notes-template.md"), "release notes template");
 requireTextMarkers(path.join(root, "docs", "release-notes-template.md"), "release notes template", [
   "源码提交 SHA",
