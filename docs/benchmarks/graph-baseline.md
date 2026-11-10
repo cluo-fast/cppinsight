@@ -28,6 +28,8 @@ node scripts/verify-benchmark-result.mjs .\benchmark-graph.json
 
 候选项目清单位于 [`corpus.json`](./corpus.json)，目前固定 10 个不同规模和构建体系的 C/C++ 项目。每次正式基准前必须把 `revision` 固定为 commit SHA，复核许可证，并补充人工核验的 `accuracy_cases`；校验器只负责保证清单结构完整，不把候选清单误报为已完成的准确率基准。
 
+2026-11-10 在一台 Linux 虚拟机上扫了 fmt `12.2.1`（`208219daff58f2a7438f6931cc2ddc358acf33ef`）和 protobuf `v6.31.1`（`74211c0dfc2777318ab53c2cd2c317a2ef9012de`），有无 `compile_commands.json` 各一次。数字、机器和人工核对的边在 [演示记录](../demo.md) 与 [`2026-11-10-linux-vm.json`](./2026-11-10-linux-vm.json)。这是小样本，不是整库准确率，也不是 Windows 基准机上的容量测试。其余 8 个候选项目的 `revision` 仍是 `null`。
+
 ## 当前可验证证据
 
 - Rust 集成测试覆盖 620 节点链的 500 节点分页、确定性 continuation、方向/深度、筛选、最短路径、歧义证据和循环分量。

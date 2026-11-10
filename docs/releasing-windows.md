@@ -12,6 +12,20 @@ powershell -ExecutionPolicy Bypass -File scripts/package-app.ps1
 
 脚本会构建并测试 C++ 扫描器、复制 `cppinsight.exe`、按 `desktop/pnpm-lock.yaml` 安装依赖、执行完整前端/Rust `pnpm run check`、构建 Release `cppinsight-workbench` CLI、验证发布配置，并生成 NSIS 与 MSI 安装包及 `SHA256SUMS.txt`。生成后会用仓库内的 `scripts/verify-sha256-manifest.mjs` 重新读取制品并校验哈希、路径安全和清单完整性。无签名安装包可用于内部测试，但从浏览器下载后可能触发 Windows SmartScreen 警告。
 
+## 打一个 GitHub Release
+
+版本号目前在这些位置一致，都是 `0.1.0`：`CMakeLists.txt`、`desktop/package.json`、`desktop/src-tauri/tauri.conf.json`、`desktop/src-tauri/Cargo.toml`、`tools/mcp-server/package.json`。不要只改其中一处。
+
+维护者在要发布的提交上执行这一条命令即可。不要在没有准备发布时执行它。它会把 `v0.1.0` 推到 GitHub，`.github/workflows/release.yml` 接着调用现有的 Windows CI（无签名的 MSI 和 NSIS）、再编一个 Linux x86_64 扫描器 CLI（静态链接 libstdc++ / libgcc，glibc 仍动态链接），并创建 GitHub Release，附上这些文件和一份 `SHA256SUMS.txt`。
+
+```bash
+git tag v0.1.0 && git push origin v0.1.0
+```
+
+标签必须正好是源码里的 `v` + 版本号。`v0.1.0` 可以，`v0.2.0` 在版本号仍是 `0.1.0` 时会被工作流拒绝。Release 正文会写明 Windows 安装包未签名，SmartScreen 可能会警告。这次流水线不申请证书、不导入 `WINDOWS_CERTIFICATE`。
+
+Linux 产物只是扫描器 `cppinsight`，不是桌面安装包，也不是 Workbench。桌面和 Workbench 仍以 Windows 安装包为准。
+
 ## GitHub Actions
 
 `.github/workflows/windows-ci.yml` 在 PR、`main` 和 `codex/**` 分支提交上构建无签名安装包，并上传：

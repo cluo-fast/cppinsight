@@ -9,8 +9,1179 @@
       "license_spdx": "MIT",
       "build_system": "CMake",
       "size_class": "small",
-      "revision": null,
-      "accuracy_cases": []
+      "revision": "208219daff58f2a7438f6931cc2ddc358acf33ef",
+      "accuracy_cases": [
+        {
+          "id": "fmt-include-01",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/core.h",
+          "line": 8,
+          "expected": "#include base.h",
+          "observed": "local base.h",
+          "note": "Quoted include. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-02",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/core.h",
+          "line": 13,
+          "expected": "#include format.h",
+          "observed": "local format.h",
+          "note": "Inside #ifdef FMT_DEPRECATED_HEAVY_CORE. Directive is in the file; #if is not evaluated. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-03",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/format.cc",
+          "line": 8,
+          "expected": "#include fmt/format-inl.h",
+          "observed": "local fmt/format-inl.h",
+          "note": "Only #include in the file. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-04",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 13,
+          "expected": "#include fmt/os.h",
+          "observed": "local fmt/os.h",
+          "note": "Quoted include. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-05",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 18,
+          "expected": "#include sys/stat.h",
+          "observed": "system sys/stat.h",
+          "note": "Inside #if FMT_USE_FCNTL. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-06",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 19,
+          "expected": "#include sys/types.h",
+          "observed": "system sys/types.h",
+          "note": "Inside #if FMT_USE_FCNTL. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-07",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 22,
+          "expected": "#include ioLib.h",
+          "observed": "system ioLib.h",
+          "note": "Inside #ifdef _WRS_KERNEL. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-08",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 26,
+          "expected": "#include unistd.h",
+          "observed": "system unistd.h",
+          "note": "Inside #ifndef _WIN32. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-09",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 31,
+          "expected": "#include io.h",
+          "observed": "system io.h",
+          "note": "Inside the _WIN32 branch. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-10",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 36,
+          "expected": "#include windows.h",
+          "observed": "system windows.h",
+          "note": "Inside #ifdef _WIN32. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-11",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 38,
+          "expected": "#include climits",
+          "observed": "system climits",
+          "note": "Inside #ifdef _WIN32. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-12",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 41,
+          "expected": "#include base.h",
+          "observed": "local base.h",
+          "note": "Quoted include. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-13",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 50,
+          "expected": "#include stdint.h",
+          "observed": "system stdint.h",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-14",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 51,
+          "expected": "#include stdlib.h",
+          "observed": "system stdlib.h",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-15",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 52,
+          "expected": "#include string.h",
+          "observed": "system string.h",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-16",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 54,
+          "expected": "#include cmath",
+          "observed": "system cmath",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-17",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 55,
+          "expected": "#include limits",
+          "observed": "system limits",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-18",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 56,
+          "expected": "#include new",
+          "observed": "system new",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-19",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 59,
+          "expected": "#include memory",
+          "observed": "system memory",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-20",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 61,
+          "expected": "#include stdexcept",
+          "observed": "system stdexcept",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-21",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 62,
+          "expected": "#include string",
+          "observed": "system string",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-22",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 63,
+          "expected": "#include system_error",
+          "observed": "system system_error",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-23",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 67,
+          "expected": "#include bit",
+          "observed": "system bit",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-24",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 71,
+          "expected": "#include string_view",
+          "observed": "system string_view",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-25",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 75,
+          "expected": "#include intrin.h",
+          "observed": "system intrin.h",
+          "note": "Conditional include, still in the text. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-include-26",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 4410,
+          "expected": "#include format-inl.h",
+          "observed": "local format-inl.h",
+          "note": "Indented #include near the bottom of the header. kind system means angle brackets; kind local means quotes."
+        },
+        {
+          "id": "fmt-resolve-01",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "include/fmt/core.h",
+          "line": 8,
+          "expected": "include/fmt/base.h",
+          "observed": "include/fmt/base.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-resolve-02",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "include/fmt/core.h",
+          "line": 13,
+          "expected": "include/fmt/format.h",
+          "observed": "include/fmt/format.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-resolve-03",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/format.cc",
+          "line": 8,
+          "expected": "include/fmt/format-inl.h",
+          "observed": "include/fmt/format-inl.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-resolve-04",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 13,
+          "expected": "include/fmt/os.h",
+          "observed": "include/fmt/os.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-resolve-05",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 41,
+          "expected": "include/fmt/base.h",
+          "observed": "include/fmt/base.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-resolve-06",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "include/fmt/format.h",
+          "line": 4410,
+          "expected": "include/fmt/format-inl.h",
+          "observed": "include/fmt/format-inl.h",
+          "note": "Hybrid scan. Opened this path in the fmt tree."
+        },
+        {
+          "id": "fmt-def-os-71",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 71,
+          "expected": "function convert_rwcount",
+          "observed": "DEF function convert_rwcount",
+          "note": "inline function under #ifdef _WIN32."
+        },
+        {
+          "id": "fmt-def-os-75",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 75,
+          "expected": "class system_message",
+          "observed": "DEF class system_message",
+          "note": "class system_message."
+        },
+        {
+          "id": "fmt-def-os-82",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 82,
+          "expected": "method is_whitespace",
+          "observed": "DEF function system_message::is_whitespace",
+          "note": "static method."
+        },
+        {
+          "id": "fmt-def-os-88",
+          "kind": "definition",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 88,
+          "expected": "member assignment result_ = FormatMessageW",
+          "observed": "DEF function system_message::result_",
+          "note": "Not a function definition."
+        },
+        {
+          "id": "fmt-def-os-100",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 100,
+          "expected": "destructor ~system_message",
+          "observed": "DEF function system_message::~system_message",
+          "note": "Destructor."
+        },
+        {
+          "id": "fmt-def-os-101",
+          "kind": "definition",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 101,
+          "expected": "explicit operator bool()",
+          "observed": "DEF function system_message::bool",
+          "note": "Conversion operator recorded under the name bool."
+        },
+        {
+          "id": "fmt-def-os-107",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 107,
+          "expected": "class utf8_system_category",
+          "observed": "DEF class utf8_system_category",
+          "note": "class definition."
+        },
+        {
+          "id": "fmt-def-os-109",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 109,
+          "expected": "method name()",
+          "observed": "DEF function utf8_system_category::name",
+          "note": "override."
+        },
+        {
+          "id": "fmt-def-os-110",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 110,
+          "expected": "method message()",
+          "observed": "DEF function utf8_system_category::message",
+          "note": "override."
+        },
+        {
+          "id": "fmt-def-os-127",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 127,
+          "expected": "function convert_rwcount",
+          "observed": "DEF function convert_rwcount",
+          "note": "Second overload, under #elif FMT_USE_FCNTL."
+        },
+        {
+          "id": "fmt-def-os-136",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 136,
+          "expected": "function system_category",
+          "observed": "DEF function system_category",
+          "note": "Function definition."
+        },
+        {
+          "id": "fmt-def-os-160",
+          "kind": "definition",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 160,
+          "expected": "FMT_CATCH macro",
+          "observed": "DEF function FMT_CATCH",
+          "note": "Macro parsed as a function definition."
+        },
+        {
+          "id": "fmt-def-os-164",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 164,
+          "expected": "function report_windows_error",
+          "observed": "DEF function report_windows_error",
+          "note": "Function definition."
+        },
+        {
+          "id": "fmt-def-os-170",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 170,
+          "expected": "destructor ~buffered_file",
+          "observed": "DEF function buffered_file::~buffered_file",
+          "note": "Destructor."
+        },
+        {
+          "id": "fmt-def-os-175",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 175,
+          "expected": "constructor buffered_file",
+          "observed": "DEF function buffered_file::buffered_file",
+          "note": "Constructor."
+        },
+        {
+          "id": "fmt-def-os-183",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 183,
+          "expected": "method close",
+          "observed": "DEF function buffered_file::close",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-191",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 191,
+          "expected": "method descriptor",
+          "observed": "DEF function buffered_file::descriptor",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-216",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 216,
+          "expected": "constructor file",
+          "observed": "DEF function file::file",
+          "note": "Constructor."
+        },
+        {
+          "id": "fmt-def-os-229",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 229,
+          "expected": "destructor ~file",
+          "observed": "DEF function file::~file",
+          "note": "Destructor."
+        },
+        {
+          "id": "fmt-def-os-236",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 236,
+          "expected": "method file::close",
+          "observed": "DEF function file::close",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-246",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 246,
+          "expected": "method file::size",
+          "observed": "DEF function file::size",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-272",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 272,
+          "expected": "method file::read",
+          "observed": "DEF function file::read",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-280",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 280,
+          "expected": "method file::write",
+          "observed": "DEF function file::write",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-380",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 380,
+          "expected": "method ostream::grow",
+          "observed": "DEF function ostream::grow",
+          "note": "Method definition."
+        },
+        {
+          "id": "fmt-def-os-391",
+          "kind": "definition",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 391,
+          "expected": "initializer file_(std::move(other.file_))",
+          "observed": "DEF function file_",
+          "note": "Constructor initializer parsed as a function."
+        },
+        {
+          "id": "fmt-def-os-396",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 396,
+          "expected": "destructor ~ostream",
+          "observed": "DEF function ostream::~ostream",
+          "note": "Destructor."
+        },
+        {
+          "id": "fmt-def-os-miss-87",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 87,
+          "expected": "constructor system_message(unsigned long)",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-os-miss-102",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 102,
+          "expected": "operator fmt::basic_string_view<wchar_t>()",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-os-miss-141",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 141,
+          "expected": "function vwindows_error",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-os-miss-147",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 147,
+          "expected": "function detail::format_windows_error",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-os-miss-384",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 384,
+          "expected": "constructor ostream::ostream",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-os-miss-389",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/os.cc",
+          "line": 389,
+          "expected": "move constructor ostream::ostream(ostream&&)",
+          "observed": "no is_definition edge",
+          "note": "Definition is in the lines that were read. No definition edge was emitted."
+        },
+        {
+          "id": "fmt-def-format-13",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 13,
+          "expected": "explicit instantiation locale_ref::locale_ref",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. A non-definition symbol was emitted, and a call edge was also emitted for this line."
+        },
+        {
+          "id": "fmt-def-format-14",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 14,
+          "expected": "explicit instantiation locale_ref::get",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-19",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 19,
+          "expected": "explicit instantiation dragonbox::to_decimal(float)",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-20",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 20,
+          "expected": "explicit instantiation dragonbox::to_decimal(double)",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-26",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 26,
+          "expected": "explicit instantiation thousands_sep_impl for char",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-28",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 28,
+          "expected": "explicit instantiation decimal_point_impl for char",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. Recorded as a non-definition symbol, not as a definition."
+        },
+        {
+          "id": "fmt-def-format-31",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 31,
+          "expected": "explicit instantiation buffer<char>::append",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-35",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 35,
+          "expected": "explicit instantiation thousands_sep_impl for wchar_t",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-def-format-37",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 37,
+          "expected": "explicit instantiation decimal_point_impl for wchar_t",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. Recorded as a non-definition symbol, not as a definition."
+        },
+        {
+          "id": "fmt-def-format-40",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/format.cc",
+          "line": 40,
+          "expected": "explicit instantiation buffer<wchar_t>::append",
+          "observed": "no is_definition edge",
+          "note": "An explicit instantiation is a definition. No symbol edge."
+        },
+        {
+          "id": "fmt-call-01",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 274,
+          "expected": "macro FMT_RETRY",
+          "observed": "call FMT_RETRY",
+          "note": "file::read. Macro, not a function call."
+        },
+        {
+          "id": "fmt-call-02",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 274,
+          "expected": "macro FMT_POSIX_CALL",
+          "observed": "call FMT_POSIX_CALL",
+          "note": "file::read. Macro."
+        },
+        {
+          "id": "fmt-call-03",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 274,
+          "expected": "call read(...)",
+          "observed": "call read",
+          "note": "file::read."
+        },
+        {
+          "id": "fmt-call-04",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 274,
+          "expected": "call convert_rwcount(count)",
+          "observed": "call convert_rwcount",
+          "note": "file::read."
+        },
+        {
+          "id": "fmt-call-05",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 276,
+          "expected": "macro FMT_THROW",
+          "observed": "call FMT_THROW",
+          "note": "file::read. Macro."
+        },
+        {
+          "id": "fmt-call-06",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 276,
+          "expected": "call system_error(...)",
+          "observed": "call system_error",
+          "note": "file::read."
+        },
+        {
+          "id": "fmt-call-07",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 276,
+          "expected": "macro FMT_STRING",
+          "observed": "call FMT_STRING",
+          "note": "file::read. Macro."
+        },
+        {
+          "id": "fmt-call-08",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 277,
+          "expected": "call detail::to_unsigned(result)",
+          "observed": "call detail::to_unsigned",
+          "note": "file::read."
+        },
+        {
+          "id": "fmt-call-09",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 282,
+          "expected": "macro FMT_RETRY",
+          "observed": "call FMT_RETRY",
+          "note": "file::write. Macro."
+        },
+        {
+          "id": "fmt-call-10",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 282,
+          "expected": "macro FMT_POSIX_CALL",
+          "observed": "call FMT_POSIX_CALL",
+          "note": "file::write. Macro."
+        },
+        {
+          "id": "fmt-call-11",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 282,
+          "expected": "call write(...)",
+          "observed": "call write",
+          "note": "file::write."
+        },
+        {
+          "id": "fmt-call-12",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 282,
+          "expected": "call convert_rwcount(count)",
+          "observed": "call convert_rwcount",
+          "note": "file::write."
+        },
+        {
+          "id": "fmt-call-13",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 284,
+          "expected": "macro FMT_THROW",
+          "observed": "call FMT_THROW",
+          "note": "file::write. Macro."
+        },
+        {
+          "id": "fmt-call-14",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 284,
+          "expected": "call system_error(...)",
+          "observed": "call system_error",
+          "note": "file::write."
+        },
+        {
+          "id": "fmt-call-15",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 284,
+          "expected": "macro FMT_STRING",
+          "observed": "call FMT_STRING",
+          "note": "file::write. Macro."
+        },
+        {
+          "id": "fmt-call-16",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 285,
+          "expected": "call detail::to_unsigned(result)",
+          "observed": "call detail::to_unsigned",
+          "note": "file::write."
+        },
+        {
+          "id": "fmt-call-17",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 263,
+          "expected": "constructor call Stat()",
+          "observed": "call Stat",
+          "note": "file::size, non-Windows branch."
+        },
+        {
+          "id": "fmt-call-18",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 264,
+          "expected": "macro FMT_POSIX_CALL",
+          "observed": "call FMT_POSIX_CALL",
+          "note": "file::size. Macro."
+        },
+        {
+          "id": "fmt-call-19",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 264,
+          "expected": "call fstat(...)",
+          "observed": "call fstat",
+          "note": "file::size."
+        },
+        {
+          "id": "fmt-call-20",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 265,
+          "expected": "macro FMT_THROW",
+          "observed": "call FMT_THROW",
+          "note": "file::size. Macro."
+        },
+        {
+          "id": "fmt-call-21",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 265,
+          "expected": "call system_error(...)",
+          "observed": "call system_error",
+          "note": "file::size."
+        },
+        {
+          "id": "fmt-call-22",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 265,
+          "expected": "macro FMT_STRING",
+          "observed": "call FMT_STRING",
+          "note": "file::size. Macro."
+        },
+        {
+          "id": "fmt-call-23",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 266,
+          "expected": "static_assert",
+          "observed": "call static_assert",
+          "note": "file::size. Keyword, not a call."
+        },
+        {
+          "id": "fmt-call-24",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 185,
+          "expected": "macro FMT_SYSTEM",
+          "observed": "call FMT_SYSTEM",
+          "note": "buffered_file::close. Macro."
+        },
+        {
+          "id": "fmt-call-25",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 185,
+          "expected": "call fclose(file_)",
+          "observed": "call fclose",
+          "note": "buffered_file::close."
+        },
+        {
+          "id": "fmt-call-26",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 188,
+          "expected": "macro FMT_THROW",
+          "observed": "call FMT_THROW",
+          "note": "buffered_file::close. Macro."
+        },
+        {
+          "id": "fmt-call-27",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 188,
+          "expected": "call system_error(...)",
+          "observed": "call system_error",
+          "note": "buffered_file::close."
+        },
+        {
+          "id": "fmt-call-28",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 188,
+          "expected": "macro FMT_STRING",
+          "observed": "call FMT_STRING",
+          "note": "buffered_file::close. Macro."
+        },
+        {
+          "id": "fmt-call-29",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 217,
+          "expected": "#if defined(_WIN32)",
+          "observed": "call defined",
+          "note": "file::file. Preprocessor defined( parsed as a call."
+        },
+        {
+          "id": "fmt-call-30",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 219,
+          "expected": "call detail::utf8_to_utf16(...)",
+          "observed": "call detail::utf8_to_utf16",
+          "note": "file::file, Windows branch."
+        },
+        {
+          "id": "fmt-call-31",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 219,
+          "expected": "call string_view(...)",
+          "observed": "call string_view",
+          "note": "file::file, Windows branch."
+        },
+        {
+          "id": "fmt-call-32",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 219,
+          "expected": "call path.c_str()",
+          "observed": "call c_str",
+          "note": "file::file, Windows branch."
+        },
+        {
+          "id": "fmt-call-33",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 220,
+          "expected": "call file::open_windows_file(...)",
+          "observed": "call file::open_windows_file",
+          "note": "file::file, Windows branch."
+        },
+        {
+          "id": "fmt-call-34",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 220,
+          "expected": "call converted.c_str()",
+          "observed": "call c_str",
+          "note": "file::file, Windows branch."
+        },
+        {
+          "id": "fmt-call-35",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 222,
+          "expected": "macro FMT_RETRY",
+          "observed": "call FMT_RETRY",
+          "note": "file::file, non-Windows branch. Macro."
+        },
+        {
+          "id": "fmt-call-36",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 222,
+          "expected": "macro FMT_POSIX_CALL",
+          "observed": "call FMT_POSIX_CALL",
+          "note": "file::file. Macro."
+        },
+        {
+          "id": "fmt-call-37",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 222,
+          "expected": "call open(...)",
+          "observed": "call open",
+          "note": "file::file, non-Windows branch."
+        },
+        {
+          "id": "fmt-call-38",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 222,
+          "expected": "call path.c_str()",
+          "observed": "call c_str",
+          "note": "file::file, non-Windows branch."
+        },
+        {
+          "id": "fmt-call-39",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 224,
+          "expected": "macro FMT_THROW",
+          "observed": "call FMT_THROW",
+          "note": "file::file. Macro."
+        },
+        {
+          "id": "fmt-call-40",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 225,
+          "expected": "call system_error(...)",
+          "observed": "call system_error",
+          "note": "file::file."
+        },
+        {
+          "id": "fmt-call-41",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/os.cc",
+          "line": 225,
+          "expected": "macro FMT_STRING",
+          "observed": "call FMT_STRING",
+          "note": "file::file. Macro."
+        },
+        {
+          "id": "fmt-call-42",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/os.cc",
+          "line": 225,
+          "expected": "call path.c_str()",
+          "observed": "call c_str",
+          "note": "file::file."
+        },
+        {
+          "id": "fmt-call-43",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/format.cc",
+          "line": 13,
+          "expected": "explicit instantiation, not a call",
+          "observed": "call locale_ref::locale_ref",
+          "note": "src/format.cc. No call expression on the line."
+        }
+      ]
     },
     {
       "id": "catch2",
@@ -45,8 +1216,969 @@
       "license_spdx": "BSD-3-Clause",
       "build_system": "CMake",
       "size_class": "large",
-      "revision": null,
-      "accuracy_cases": []
+      "revision": "74211c0dfc2777318ab53c2cd2c317a2ef9012de",
+      "accuracy_cases": [
+        {
+          "id": "pb-include-01",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 3,
+          "expected": "#include ctime",
+          "observed": "system ctime",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-02",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 4,
+          "expected": "#include fstream",
+          "observed": "system fstream",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-03",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 5,
+          "expected": "#include google/protobuf/util/time_util.h",
+          "observed": "system google/protobuf/util/time_util.h",
+          "note": "Angle brackets, so kind is system. The header exists at src/google/protobuf/util/time_util.h and was not resolved."
+        },
+        {
+          "id": "pb-include-04",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 6,
+          "expected": "#include iostream",
+          "observed": "system iostream",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-05",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 7,
+          "expected": "#include string",
+          "observed": "system string",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-06",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 9,
+          "expected": "#include addressbook.pb.h",
+          "observed": "local addressbook.pb.h",
+          "note": "Quoted include. The generated header is not in this checkout."
+        },
+        {
+          "id": "pb-include-07",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 3,
+          "expected": "#include fstream",
+          "observed": "system fstream",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-08",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 4,
+          "expected": "#include google/protobuf/util/time_util.h",
+          "observed": "system google/protobuf/util/time_util.h",
+          "note": "Angle brackets. Same header as add_person; not resolved."
+        },
+        {
+          "id": "pb-include-09",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 5,
+          "expected": "#include iostream",
+          "observed": "system iostream",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-10",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 6,
+          "expected": "#include string",
+          "observed": "system string",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-11",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 8,
+          "expected": "#include addressbook.pb.h",
+          "observed": "local addressbook.pb.h",
+          "note": "Quoted include of a generated header that is not in the checkout."
+        },
+        {
+          "id": "pb-include-12",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 8,
+          "expected": "#include cstdlib",
+          "observed": "system cstdlib",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-13",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 9,
+          "expected": "#include string",
+          "observed": "system string",
+          "note": "Angle brackets."
+        },
+        {
+          "id": "pb-include-14",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 11,
+          "expected": "#include absl/strings/cord.h",
+          "observed": "local absl/strings/cord.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-15",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 12,
+          "expected": "#include absl/strings/match.h",
+          "observed": "local absl/strings/match.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-16",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 13,
+          "expected": "#include absl/strings/str_cat.h",
+          "observed": "local absl/strings/str_cat.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-17",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 14,
+          "expected": "#include absl/strings/string_view.h",
+          "observed": "local absl/strings/string_view.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-18",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 15,
+          "expected": "#include google/protobuf/any.h",
+          "observed": "local google/protobuf/any.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-19",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 16,
+          "expected": "#include google/protobuf/generated_message_util.h",
+          "observed": "local google/protobuf/generated_message_util.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-20",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 17,
+          "expected": "#include google/protobuf/io/zero_copy_stream_impl_lite.h",
+          "observed": "local google/protobuf/io/zero_copy_stream_impl_lite.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-21",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 18,
+          "expected": "#include google/protobuf/message_lite.h",
+          "observed": "local google/protobuf/message_lite.h",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-22",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 21,
+          "expected": "#include google/protobuf/port_def.inc",
+          "observed": "local google/protobuf/port_def.inc",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-include-23",
+          "kind": "include",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 95,
+          "expected": "#include google/protobuf/port_undef.inc",
+          "observed": "local google/protobuf/port_undef.inc",
+          "note": "Quoted include."
+        },
+        {
+          "id": "pb-resolve-01",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 11,
+          "expected": "cmake-build/_deps/absl-src/absl/strings/cord.h",
+          "observed": "cmake-build/_deps/absl-src/absl/strings/cord.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-02",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 12,
+          "expected": "cmake-build/_deps/absl-src/absl/strings/match.h",
+          "observed": "cmake-build/_deps/absl-src/absl/strings/match.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-03",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 13,
+          "expected": "cmake-build/_deps/absl-src/absl/strings/str_cat.h",
+          "observed": "cmake-build/_deps/absl-src/absl/strings/str_cat.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-04",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 14,
+          "expected": "cmake-build/_deps/absl-src/absl/strings/string_view.h",
+          "observed": "cmake-build/_deps/absl-src/absl/strings/string_view.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-05",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 15,
+          "expected": "src/google/protobuf/any.h",
+          "observed": "src/google/protobuf/any.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-06",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 16,
+          "expected": "src/google/protobuf/generated_message_util.h",
+          "observed": "src/google/protobuf/generated_message_util.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-07",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 17,
+          "expected": "src/google/protobuf/io/zero_copy_stream_impl_lite.h",
+          "observed": "src/google/protobuf/io/zero_copy_stream_impl_lite.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-08",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 18,
+          "expected": "src/google/protobuf/message_lite.h",
+          "observed": "src/google/protobuf/message_lite.h",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-09",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 21,
+          "expected": "src/google/protobuf/port_def.inc",
+          "observed": "src/google/protobuf/port_def.inc",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-resolve-10",
+          "kind": "include_resolution",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 95,
+          "expected": "src/google/protobuf/port_undef.inc",
+          "observed": "src/google/protobuf/port_undef.inc",
+          "note": "Hybrid scan. Opened this path. Abseil paths are under the CMake-fetched _deps tree, not a git submodule."
+        },
+        {
+          "id": "pb-def-any-44",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 44,
+          "expected": "function EndsWithTypeName",
+          "observed": "DEF function EndsWithTypeName",
+          "note": "Definition at line 44."
+        },
+        {
+          "id": "pb-def-any-68",
+          "kind": "definition",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 68,
+          "expected": "function InternalIsLite",
+          "observed": "DEF function InternalIsLite",
+          "note": "Definition at line 68."
+        },
+        {
+          "id": "pb-def-any-37",
+          "kind": "definition",
+          "verdict": "wrong",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 37,
+          "expected": "call type_url_prefix.size(), not a function definition",
+          "observed": "DEF function google::protobuf::internal::size",
+          "note": "Hybrid mode still labels this precise because any_lite.cc is in compile_commands."
+        },
+        {
+          "id": "pb-def-any-miss-34",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 34,
+          "expected": "function GetTypeUrl",
+          "observed": "no is_definition edge",
+          "note": "The function is defined here. GetTypeUrl was recorded only as a non-definition at the later call on line 55."
+        },
+        {
+          "id": "pb-def-any-miss-50",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 50,
+          "expected": "function InternalPackFromLite",
+          "observed": "no is_definition edge",
+          "note": "The function is defined here. GetTypeUrl was recorded only as a non-definition at the later call on line 55."
+        },
+        {
+          "id": "pb-def-any-miss-59",
+          "kind": "definition",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 59,
+          "expected": "function InternalUnpackToLite",
+          "observed": "no is_definition edge",
+          "note": "The function is defined here. GetTypeUrl was recorded only as a non-definition at the later call on line 55."
+        },
+        {
+          "id": "pb-call-add-01",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 20,
+          "expected": "person->set_id(id)",
+          "observed": "call set_id",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-02",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 21,
+          "expected": "cin.ignore(256, '\\n')",
+          "observed": "call ignore",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-03",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 24,
+          "expected": "getline(cin, *person->mutable_name())",
+          "observed": "call getline",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-04",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 24,
+          "expected": "person->mutable_name()",
+          "observed": "call mutable_name",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-05",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 28,
+          "expected": "getline(cin, email)",
+          "observed": "call getline",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-06",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 29,
+          "expected": "email.empty()",
+          "observed": "call empty",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-07",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 30,
+          "expected": "person->set_email(email)",
+          "observed": "call set_email",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-08",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 36,
+          "expected": "getline(cin, number)",
+          "observed": "call getline",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-09",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 37,
+          "expected": "number.empty()",
+          "observed": "call empty",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-10",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 41,
+          "expected": "person->add_phones()",
+          "observed": "call add_phones",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-11",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 42,
+          "expected": "phone_number->set_number(number)",
+          "observed": "call set_number",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-12",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 46,
+          "expected": "getline(cin, type)",
+          "observed": "call getline",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-13",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 48,
+          "expected": "phone_number->set_type(...MOBILE)",
+          "observed": "call set_type",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-14",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 50,
+          "expected": "phone_number->set_type(...HOME)",
+          "observed": "call set_type",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-15",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 52,
+          "expected": "phone_number->set_type(...WORK)",
+          "observed": "call set_type",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-16",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 57,
+          "expected": "person->mutable_last_updated()",
+          "observed": "call mutable_last_updated",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-17",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 57,
+          "expected": "TimeUtil::SecondsToTimestamp(...)",
+          "observed": "call TimeUtil::SecondsToTimestamp",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-18",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 57,
+          "expected": "time(NULL)",
+          "observed": "call time",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-19",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 80,
+          "expected": "address_book.ParseFromIstream(&input)",
+          "observed": "call ParseFromIstream",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-20",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 87,
+          "expected": "PromptForAddress(...)",
+          "observed": "call PromptForAddress",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-21",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 87,
+          "expected": "address_book.add_people()",
+          "observed": "call add_people",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-22",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 92,
+          "expected": "address_book.SerializeToOstream(&output)",
+          "observed": "call SerializeToOstream",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-23",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/add_person.cc",
+          "line": 99,
+          "expected": "google::protobuf::ShutdownProtobufLibrary()",
+          "observed": "call google::protobuf::ShutdownProtobufLibrary",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-24",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "examples/add_person.cc",
+          "line": 77,
+          "expected": "fstream input(...)",
+          "observed": "no call edge",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-add-25",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "examples/add_person.cc",
+          "line": 91,
+          "expected": "fstream output(...)",
+          "observed": "no call edge",
+          "note": "Whole-file paren-call check of examples/add_person.cc."
+        },
+        {
+          "id": "pb-call-list-01",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 16,
+          "expected": "address_book.people_size()",
+          "observed": "call people_size",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-02",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 17,
+          "expected": "address_book.people(i)",
+          "observed": "call people",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-03",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 19,
+          "expected": "person.id()",
+          "observed": "call id",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-04",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 20,
+          "expected": "person.name()",
+          "observed": "call name",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-05",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 21,
+          "expected": "person.email()",
+          "observed": "call email",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-06",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 22,
+          "expected": "person.email()",
+          "observed": "call email",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-07",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 25,
+          "expected": "person.phones_size()",
+          "observed": "call phones_size",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-08",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 26,
+          "expected": "person.phones(j)",
+          "observed": "call phones",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-09",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 28,
+          "expected": "phone_number.type()",
+          "observed": "call type",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-10",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 42,
+          "expected": "phone_number.number()",
+          "observed": "call number",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-11",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 44,
+          "expected": "person.has_last_updated()",
+          "observed": "call has_last_updated",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-12",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 45,
+          "expected": "TimeUtil::ToString(...)",
+          "observed": "call TimeUtil::ToString",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-13",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 45,
+          "expected": "person.last_updated()",
+          "observed": "call last_updated",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-14",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 67,
+          "expected": "address_book.ParseFromIstream(&input)",
+          "observed": "call ParseFromIstream",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-15",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 73,
+          "expected": "ListPeople(address_book)",
+          "observed": "call ListPeople",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-16",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "examples/list_people.cc",
+          "line": 76,
+          "expected": "google::protobuf::ShutdownProtobufLibrary()",
+          "observed": "call google::protobuf::ShutdownProtobufLibrary",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-list-17",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "examples/list_people.cc",
+          "line": 66,
+          "expected": "fstream input(...)",
+          "observed": "no call edge",
+          "note": "Whole-file paren-call check of examples/list_people.cc."
+        },
+        {
+          "id": "pb-call-any-01",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 38,
+          "expected": "absl::StrCat inside GetTypeUrl",
+          "observed": "caller recorded as size",
+          "note": "Callee name matches; caller was attached to the false size definition. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-02",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 40,
+          "expected": "absl::StrCat inside GetTypeUrl",
+          "observed": "caller recorded as size",
+          "note": "Same caller error as line 38. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-03",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 45,
+          "expected": "type_url.size() or type_name.size()",
+          "observed": "call size from EndsWithTypeName",
+          "note": "One size() edge. The second size() on this line was not emitted. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-04",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 46,
+          "expected": "type_url.size() or type_name.size()",
+          "observed": "call size from EndsWithTypeName",
+          "note": "One size() edge. The second size() on this line was not emitted. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-05",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 47,
+          "expected": "absl::EndsWith(type_url, type_name)",
+          "observed": "call absl::EndsWith",
+          "note": "Caller EndsWithTypeName matches. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-06",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 55,
+          "expected": "GetTypeUrl(...) inside InternalPackFromLite",
+          "observed": "caller recorded as GetTypeUrl",
+          "note": "The call exists; the caller is InternalPackFromLite, not GetTypeUrl. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-07",
+          "kind": "call",
+          "verdict": "wrong",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 62,
+          "expected": "InternalIsLite(...) inside InternalUnpackToLite",
+          "observed": "caller recorded as empty",
+          "note": "The call exists; the caller name was empty. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-08",
+          "kind": "call",
+          "verdict": "correct",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 69,
+          "expected": "EndsWithTypeName(...) inside InternalIsLite",
+          "observed": "call EndsWithTypeName",
+          "note": "Caller matches. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-09",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 36,
+          "expected": "type_url_prefix.empty()",
+          "observed": "no call edge",
+          "note": "GetTypeUrl. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-10",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 37,
+          "expected": "type_url_prefix.size()",
+          "observed": "no call edge",
+          "note": "First size() call. A false definition was emitted instead. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-11",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 37,
+          "expected": "type_url_prefix.size() in the subscript",
+          "observed": "no call edge",
+          "note": "Second size() call on the same line. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-12",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 45,
+          "expected": "second size() call on the line",
+          "observed": "no second size edge",
+          "note": "Same-name calls on one line are collapsed. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-13",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 46,
+          "expected": "second size() call on the line",
+          "observed": "no second size edge",
+          "note": "Same-name calls on one line are collapsed. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-14",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 56,
+          "expected": "message.SerializeToString(dst_value)",
+          "observed": "no call edge",
+          "note": "InternalPackFromLite. Lines 34-70 only."
+        },
+        {
+          "id": "pb-call-any-15",
+          "kind": "call",
+          "verdict": "missed",
+          "file": "src/google/protobuf/any_lite.cc",
+          "line": 65,
+          "expected": "dst_message->ParseFromString(value)",
+          "observed": "no call edge",
+          "note": "InternalUnpackToLite. Lines 34-70 only."
+        }
+      ]
     },
     {
       "id": "grpc",
@@ -93,5 +2225,6 @@
       "revision": null,
       "accuracy_cases": []
     }
-  ]
+  ],
+  "notes": "revision is a commit SHA only for projects scanned for docs/demo.md. Other revisions stay null. accuracy_cases are a hand-checked sample, not a rate for the whole repository."
 }

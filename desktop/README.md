@@ -1,5 +1,7 @@
 # CppInsight AI Desktop
 
+一分钟扫完自带示例的命令在仓库根目录 [README](../README.md)（[中文](../README.zh-CN.md)）。真实项目的计数在 [docs/demo.md](../docs/demo.md)。
+
 Windows 桌面端由 React/Vite 前端与 Tauri/Rust 后端组成，运行时调用一并打包的 C++ 扫描器。五类复杂关系图已作为首发能力集成；在 Windows 安装回归、签名和真实基准证据完成前，当前构建仍属于公开测试版候选。
 
 扫描器是启发式的按行/正则分析，不是 Clang AST。`compile_commands.json` 只提供头文件搜索路径，并把出现在编译数据库中的文件标成协议里的 `precise`。这个标签表示编译数据库辅助，不表示编译器已经核对过调用关系。界面筛选里该值显示为「编译数据库」。没有编译数据库时，欢迎页仍可「体验内置示例」。

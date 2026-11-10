@@ -1,0 +1,225 @@
+{
+  "schema_version": 1,
+  "measured_on": "2026-11-10",
+  "scanner": "cppinsight-core/0.1.0 built from this tree with g++ 13.3.0, CMake 3.28.3, -DCMAKE_BUILD_TYPE=Release",
+  "host": {
+    "os": "Linux 6.12.113+ x86_64",
+    "cpu": "Intel(R) Xeon(R) Processor, 4 vCPU, virtualized CPUID",
+    "mem_total_kib": 16387328,
+    "glibc": "2.39",
+    "note": "Cloud VM. Not the Windows reference machine in docs/release-notes-template.md."
+  },
+  "method": {
+    "command": "cppinsight scan <root> --json <out> --quiet, with --compile-commands and --skip-dir when noted",
+    "wall_time": "Python time.perf_counter around the process, including process startup. scan_duration_ms is the scanner's own timer.",
+    "include_kind": "system means angle brackets. local means quotes. It does not mean the header is or is not a C standard header.",
+    "correct": "The emitted edge matches the source text that was read.",
+    "wrong": "The emitted edge is not that source fact. Macro invocations and keywords counted as calls are wrong for this sample.",
+    "missed": "A source fact in the read lines had no matching edge.",
+    "not_a_rate": "The sample is the lines that were read. It is not a random sample and not an accuracy rate for either repository."
+  },
+  "projects": [
+    {
+      "id": "fmt",
+      "tag": "12.2.1",
+      "revision": "208219daff58f2a7438f6931cc2ddc358acf33ef",
+      "license_spdx": "MIT",
+      "runs": [
+        {
+          "mode": "heuristic",
+          "how": "Moved fmt/build aside so the scanner would not auto-load build/compile_commands.json.",
+          "wall_sec": 0.66,
+          "scan_duration_ms": 528,
+          "files": 72,
+          "source_files": 47,
+          "header_files": 25,
+          "lines_total": 68959,
+          "lines_code": 45613,
+          "lines_comment": 14508,
+          "lines_blank": 8838,
+          "bytes": 2517031,
+          "includes": 736,
+          "local_includes": 164,
+          "resolved_local_includes": 0,
+          "symbols": 6444,
+          "definitions": 5078,
+          "calls": 13585,
+          "relations": 4416,
+          "entry_points": 8,
+          "compile_commands_entries": 0
+        },
+        {
+          "mode": "hybrid",
+          "how": "CMake 3.28.3 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DFMT_DOC=OFF -DFMT_TEST=ON. 51 entries. Passed --compile-commands explicitly. The build/ directory is skipped by the scanner, so generated build files were not counted.",
+          "wall_sec": 0.69,
+          "scan_duration_ms": 545,
+          "files": 72,
+          "source_files": 47,
+          "header_files": 25,
+          "lines_total": 68959,
+          "lines_code": 45613,
+          "includes": 736,
+          "local_includes": 164,
+          "resolved_local_includes": 156,
+          "symbols": 6444,
+          "definitions": 5078,
+          "calls": 13585,
+          "relations": 4416,
+          "entry_points": 8,
+          "compile_commands_entries": 51,
+          "symbol_confidence": {
+            "precise": 2195,
+            "heuristic": 4249
+          },
+          "call_confidence": {
+            "precise": 9666,
+            "heuristic": 3919
+          },
+          "unresolved_local_includes": [
+            "test/gtest/gtest/gtest.h:2527 absl/types/any.h",
+            "test/gtest/gtest/gtest.h:2555 absl/types/optional.h",
+            "test/gtest/gtest/gtest.h:2585 absl/strings/string_view.h",
+            "test/gtest/gtest/gtest.h:2613 absl/types/variant.h",
+            "test/gtest/gmock-gtest-all.cc:1622 absl/debugging/failure_signal_handler.h",
+            "test/gtest/gmock-gtest-all.cc:1623 absl/debugging/stacktrace.h",
+            "test/gtest/gmock-gtest-all.cc:1624 absl/debugging/symbolize.h",
+            "test/gtest/gmock-gtest-all.cc:1625 absl/strings/str_cat.h"
+          ]
+        }
+      ],
+      "counts_same_in_both_modes": [
+        "files",
+        "symbols",
+        "definitions",
+        "includes",
+        "calls",
+        "relations",
+        "entry_points"
+      ],
+      "accuracy_sample": {
+        "edge_sample": {
+          "include": {
+            "checked": 26,
+            "correct": 26,
+            "wrong": 0,
+            "missed": 0
+          },
+          "definition": {
+            "checked": 42,
+            "correct": 22,
+            "wrong": 4,
+            "missed": 16
+          },
+          "call": {
+            "checked": 43,
+            "correct": 22,
+            "wrong": 21,
+            "missed": 0
+          }
+        },
+        "include_resolution_opened": {
+          "checked": 6,
+          "matched_existing_path": 6
+        }
+      }
+    },
+    {
+      "id": "protobuf",
+      "tag": "v6.31.1",
+      "revision": "74211c0dfc2777318ab53c2cd2c317a2ef9012de",
+      "license_spdx": "BSD-3-Clause",
+      "clone": "git clone --depth 1 --branch v6.31.1. No git submodules.",
+      "runs": [
+        {
+          "mode": "heuristic",
+          "how": "Scanned before cmake-build contained Abseil sources. File count matches a pre-configure walk of 1127 C/C++ files.",
+          "wall_sec": 8.301,
+          "scan_duration_ms": 7051,
+          "files": 1127,
+          "source_files": 584,
+          "header_files": 543,
+          "lines_total": 534873,
+          "lines_code": 408311,
+          "lines_comment": 64517,
+          "lines_blank": 62045,
+          "bytes": 20765802,
+          "includes": 11422,
+          "local_includes": 8046,
+          "resolved_local_includes": 0,
+          "symbols": 45731,
+          "definitions": 28880,
+          "calls": 118474,
+          "relations": 45734,
+          "entry_points": 24,
+          "compile_commands_entries": 0
+        },
+        {
+          "mode": "hybrid",
+          "how": "CMake configure with -Dprotobuf_BUILD_TESTS=OFF -Dprotobuf_BUILD_EXAMPLES=OFF -DCMAKE_EXPORT_COMPILE_COMMANDS=ON. CMake fetched Abseil 20250127.0 into cmake-build/_deps. Scan used --compile-commands and --skip-dir cmake-build so those 823 extra C/C++ files were not inventoried. 597 compile commands, 286 project files marked from_compile_commands.",
+          "wall_sec": 10.73,
+          "scan_duration_ms": 9482,
+          "files": 1127,
+          "source_files": 584,
+          "header_files": 543,
+          "lines_total": 534873,
+          "lines_code": 408311,
+          "includes": 11422,
+          "local_includes": 8046,
+          "resolved_local_includes": 7541,
+          "symbols": 45731,
+          "definitions": 28880,
+          "calls": 118474,
+          "relations": 45734,
+          "entry_points": 24,
+          "compile_commands_entries": 597,
+          "files_from_compile_commands": 286,
+          "symbol_confidence": {
+            "precise": 11071,
+            "heuristic": 34660
+          },
+          "call_confidence": {
+            "precise": 31688,
+            "heuristic": 86786
+          },
+          "unresolved_local_includes": 505,
+          "unresolved_note": "Many unresolved quoted includes are generated *.pb.h files that are not in the checkout because tests and examples were not built."
+        }
+      ],
+      "counts_same_in_both_modes": [
+        "files",
+        "symbols",
+        "definitions",
+        "includes",
+        "calls",
+        "relations",
+        "entry_points"
+      ],
+      "accuracy_sample": {
+        "edge_sample": {
+          "include": {
+            "checked": 23,
+            "correct": 23,
+            "wrong": 0,
+            "missed": 0
+          },
+          "definition": {
+            "checked": 6,
+            "correct": 2,
+            "wrong": 1,
+            "missed": 3
+          },
+          "call": {
+            "checked": 57,
+            "correct": 43,
+            "wrong": 4,
+            "missed": 10
+          }
+        },
+        "include_resolution_opened": {
+          "checked": 10,
+          "matched_existing_path": 10
+        }
+      }
+    }
+  ]
+}

@@ -28,6 +28,18 @@ const desktopPackage = JSON.parse(
 requireValue(config.productName === "CppInsight AI", "unexpected productName");
 requireValue(config.identifier === "ai.cppinsight.desktop", "unexpected identifier");
 requireValue(/^\d+\.\d+\.\d+$/.test(config.version), "version must be semver");
+
+const cmakeText = readFileSync(path.join(root, "CMakeLists.txt"), "utf8");
+const cmakeVersion = cmakeText.match(/project\(CppInsightAI VERSION (\d+\.\d+\.\d+)/)?.[1];
+const cargoText = readFileSync(path.join(tauriRoot, "Cargo.toml"), "utf8");
+const cargoVersion = cargoText.match(/^version = "(\d+\.\d+\.\d+)"/m)?.[1];
+const mcpVersion = JSON.parse(
+  readFileSync(path.join(root, "tools", "mcp-server", "package.json"), "utf8")
+).version;
+requireValue(cmakeVersion === config.version, "CMake version must match tauri.conf.json");
+requireValue(desktopPackage.version === config.version, "desktop package version must match tauri.conf.json");
+requireValue(cargoVersion === config.version, "Cargo package version must match tauri.conf.json");
+requireValue(mcpVersion === config.version, "MCP package version must match tauri.conf.json");
 requireValue(
   desktopPackage.scripts?.["verify:bundle"] ===
     "node ../scripts/verify-release-config.mjs",
@@ -178,8 +190,40 @@ if (existsSync(windowsWorkflowPath)) {
       );
     }
   }
+  requireValue(workflow.includes("workflow_call:"), "Windows CI workflow must be reusable by the tag release");
 } else {
   failures.push("missing Windows CI workflow: .github/workflows/windows-ci.yml");
+}
+
+const releaseWorkflowPath = path.join(root, ".github", "workflows", "release.yml");
+requireFile(releaseWorkflowPath, "tag release workflow");
+if (existsSync(releaseWorkflowPath)) {
+  const releaseWorkflow = readFileSync(releaseWorkflowPath, "utf8");
+  for (const marker of [
+    'tags:',
+    '- "v*"',
+    "uses: ./.github/workflows/windows-ci.yml",
+    "contents: write",
+    "unsigned",
+    "SmartScreen",
+    "SHA256SUMS.txt",
+    "-static-libstdc++",
+    "does not match source version",
+    "gh release create",
+    "cppinsight-${GITHUB_REF_NAME}-linux-x86_64"
+  ]) {
+    requireValue(releaseWorkflow.includes(marker), `release workflow is missing: ${marker}`);
+  }
+  for (const line of releaseWorkflow.split(/\r?\n/)) {
+    const action = line.match(/^\s*uses:\s*([^\s#]+)(?:\s*#.*)?$/)?.[1];
+    if (!action || action.startsWith("./")) {
+      continue;
+    }
+    requireValue(
+      /@[0-9a-f]{40}$/.test(action),
+      `GitHub Action must be pinned to a full commit SHA: ${action}`
+    );
+  }
 }
 
 function requireTextMarkers(filePath, label, markers) {
