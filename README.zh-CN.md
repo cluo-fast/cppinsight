@@ -25,6 +25,10 @@ Windows 多配置生成器的程序在 `build\Release\cppinsight.exe`。示例�
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+## Windows 安装
+
+[v0.1.0](https://github.com/cluo-fast/cppinsight/releases/tag/v0.1.0) 的 MSI 和 NSIS 没有签名。SmartScreen 常会显示 “Windows protected your PC”（中文系统多为「Windows 已保护你的电脑」）。点 **More info**（更多信息），再点 **Run anyway**（仍要运行）。运行前用该发布页上的 `SHA256SUMS.txt` 核对文件。未签名不等于已经做了 Authenticode 签名。
+
 CppInsight AI 用来接手一套不是你写的 C/C++ 工程。它清点源码、在项目目录写入本地索引，并生成**项目接手报告**和可以回到引用行的**关系图**。它包含桌面应用、命令行和 MCP 服务。它不是编译器，也不是通用聊天客户端。
 
 ## 这不是 C++ Insights
@@ -67,8 +71,8 @@ CppInsight AI 把扫描、索引、报告和关系图留在本机。你可以先
 
 - 启发式解析。不要把一条边当成编译器已经验证的事实。
 - 编译数据库会改善 include 查找并改写保存下来的置信度标签，不会用编译器重新解析文件。
-- fmt 12.2.1 和 protobuf 6.31.1 上有一份小的人工核对样本，见 [docs/demo.zh-CN.md](docs/demo.zh-CN.md)：197 条边里 138 条和读过的源码一致，30 条错误，29 条漏掉。这是读过的那些行，不是这两个仓库的准确率。
-- 打包目标是 Windows 桌面（MSI/NSIS）。当前候选安装包未签名，在配置 Authenticode 之前 SmartScreen 可能提示。见 [docs/releasing-windows.md](docs/releasing-windows.md)。
+- fmt 12.2.1 和 protobuf 6.31.1 上有一份小的人工核对样本，见 [docs/demo.zh-CN.md](docs/demo.zh-CN.md)：核对 171 条，正确 153 条，错误 0 条，漏掉 18 条。样本里仍然发出的边，精确率是 1.000；这些行上真事实的召回率是 0.895。样本以外的边没有全部核对。这不是这两个仓库的准确率。
+- 打包目标是 Windows 桌面（MSI/NSIS）。v0.1.0 安装包未签名，SmartScreen 可能拦截，需要点 More info（更多信息），再点 Run anyway（仍要运行）。见 [Windows 安装](#windows-安装)。
 - Linux 和 macOS 可以编译扫描器以及大部分桌面代码，用于开发，不是发布目标。
 - 没有关闭 AI 时，只有你确认过的摘录会发到你配置的 OpenAI 兼容端点。发送前请再看一眼范围。
 

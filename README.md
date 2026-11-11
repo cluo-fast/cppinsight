@@ -25,6 +25,10 @@ A maintainer cuts a GitHub Release with one command, on the commit that should b
 git tag v0.1.0 && git push origin v0.1.0
 ```
 
+## Windows install
+
+The [v0.1.0](https://github.com/cluo-fast/cppinsight/releases/tag/v0.1.0) MSI and NSIS installers are unsigned. SmartScreen often says “Windows protected your PC”. Choose **More info**, then **Run anyway**. Compare the download with `SHA256SUMS.txt` on that release page before you run it. Unsigned is not the same as Authenticode-signed.
+
 CppInsight AI helps you take over a C/C++ tree you did not write. It inventories the source, writes a project-local index, and produces an onboarding report plus relationship graphs you can check against the cited lines. It is a desktop workbench, a small CLI, and an MCP server. It is not a compiler, and it is not a general chat client.
 
 ## Not C++ Insights
@@ -67,8 +71,8 @@ Search, depth, direction, layout save, and SVG/PNG export live in the desktop gr
 
 - Heuristic parsing. Do not treat a graph edge as something the compiler verified.
 - A compilation database improves include lookup and changes the stored confidence label. It does not re-parse the file with a compiler.
-- A small hand-checked sample on fmt 12.2.1 and protobuf 6.31.1 is in [docs/demo.md](docs/demo.md): 197 edges, 138 matching the source text, 30 wrong, 29 missed. That is the lines that were read, not an accuracy rate for either repository.
-- The packaged app is a Windows desktop (MSI/NSIS). Current candidate installers are unsigned. SmartScreen can warn until Authenticode signing is configured. See [docs/releasing-windows.md](docs/releasing-windows.md).
+- A small hand-checked sample on fmt 12.2.1 and protobuf 6.31.1 is in [docs/demo.md](docs/demo.md): 171 checked, 153 correct, 0 wrong, 18 missed. Precision on the edges that sample still emits is 1.000; recall of the real facts in those lines is 0.895. Edges outside the sample were not all checked. This is not an accuracy rate for either repository.
+- The packaged app is a Windows desktop (MSI/NSIS). The v0.1.0 installers are unsigned, so SmartScreen can block them until you choose More info, then Run anyway. See [Windows install](#windows-install).
 - Linux and macOS can build the scanner and much of the desktop for development. They are not the release target.
 - AI, when you leave it enabled, sends only the confirmed excerpt to the OpenAI-compatible endpoint you configure. Review that range before you continue.
 
